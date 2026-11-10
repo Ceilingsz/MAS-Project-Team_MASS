@@ -7,7 +7,7 @@ with polygonal obstacles using several single-integrator drones.
 
 ```bash
 pip install -e ".[dev,dmpc]"     # numpy, shapely>=2, matplotlib, scipy, pytest, osqp (D-MPC)
-python -m pytest -q              # run from the repository root (about 7 min; see "Testing")
+python -m pytest -q              # run from the repository root (about 4 min; see "Testing")
 PYTHONPATH=src:. python scripts/demo_greedy.py sparse 0
 ```
 
@@ -257,7 +257,12 @@ Needs `pip install -e ".[dmpc]"` (OSQP); without it `import models` omits the mo
 * **Not a guarantee**: separation is enforced against the neighbour's *predicted* path, one step old. Measure collisions;
   `SimConfig(safety="bvc")` can be added as a backstop. Options: `coupling`, `horizon`, `margin`, `share` (also broadcast
   and merge coverage beliefs), `decision_period`, `seed`, plus any `DMPCParams` weight.
-* Compute: about 3-5 ms per solve with dense matrix assembly, so a 4-drone run takes ~1 min of wall time (greedy: ~2 s).
+* Compute: each drone keeps one `DMPCSolver`. The QP is built sparse with a fixed pattern (a capacity of soft-constraint
+  rows; spare rows have zero coefficients and never bind) and one OSQP object is updated in place every step and warm
+  started, instead of being built and set up again. About 1.3 ms per solve (was 7.4 ms); whole runs 3.8-4.6x faster
+  (3 drones on `rooms_and_door`: 50 s -> 13 s; 1 drone: 17 s -> 3.8 s), with the same coverage times. Answers agree with
+  a fresh setup to the solver tolerance (millimetres; `tests/test_dmpc.py`). Half of the old cost was not the maths:
+  `osqp.OSQP()` without `algebra="builtin"` probes for GPU/MKL backends by importing them on every call.
   `layer 1` is replaceable: subclass `DMPCAgentPolicy` and override `select_goal` (for `cbba+dmpc`).
 * **Unknown map: `frontier+dmpc`** (`planning/agent_frontier_dmpc.py`, run with `SimConfig(known_map=False)`). Goals come
   from the frontier explorer's rule (most UNKNOWN cells revealed per second of travel, unknown space treated as free); the

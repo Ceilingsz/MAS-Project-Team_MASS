@@ -13,7 +13,7 @@ from mascov.common.types import Command  # noqa: E402
 from mascov.geometry.polygons import rect  # noqa: E402
 from mascov.maps.benchmarks import make_world  # noqa: E402
 from mascov.planning.agent_dmpc import DMPCAgentPolicy  # noqa: E402
-from mascov.planning.dmpc import DMPCParams, obstacle_halfspaces, solve_dmpc  # noqa: E402
+from mascov.planning.dmpc import DMPCParams, DMPCSolver, obstacle_halfspaces, solve_dmpc  # noqa: E402
 from mascov.sim.simulator import Simulator  # noqa: E402
 from mascov.world.world import World  # noqa: E402
 
@@ -46,6 +46,54 @@ def test_qp_respects_walls_and_obstacles():
     p0 = np.array([0.6, 6.0])
     r = solve_dmpc(p0, np.zeros(2), straight_ref(p0, [-1, 0], speed=1.0), None, [], [], prm)
     assert r.points[:, 0].min() >= prm.clearance - 1e-3
+
+
+def _random_case(rng):
+    from mascov.geometry.polygons import random_convex_polygon
+    polys = [random_convex_polygon(rng, *rng.uniform(1.5, 10.5, 2), float(rng.uniform(0.3, 1.0)), 6)
+             for _ in range(int(rng.integers(0, 9)))]
+    p0 = rng.uniform(1, 11, 2)
+    d = rng.normal(size=2)
+    ref = p0[None] + d[None] / np.linalg.norm(d) * rng.uniform(0.03, 0.1) * np.arange(1, 11)[:, None]
+    prev = None if rng.random() < 0.3 else ref + rng.normal(scale=0.05, size=ref.shape)
+    nbrs = [p0[None] + rng.uniform(-1.5, 1.5, 2)[None] + rng.normal(scale=0.05, size=(10, 2))
+            for _ in range(int(rng.integers(0, 6)))]
+    return p0, rng.uniform(-0.6, 0.6, 2), ref, prev, obstacle_halfspaces(polys), nbrs
+
+
+def test_reused_solver_agrees_with_a_fresh_one_and_grows_when_needed():
+    """One OSQP object per drone, values updated every step, must give the answers a fresh setup gives (to the
+    solver tolerance), also when the number of constraints changes from step to step or exceeds the capacity."""
+    rng = np.random.default_rng(1)
+    prm = DMPCParams()
+    reused = DMPCSolver(prm, capacity=6)               # small on purpose: 8 obstacles + 5 neighbours do not fit
+    compared = 0
+    for _ in range(150):
+        case = _random_case(rng)
+        a = solve_dmpc(*case, prm)
+        b = reused.solve(*case)
+        if a.info["failed"]:
+            continue        # a few random cases (5 neighbours packed around the drone) hit OSQP's iteration
+                            # limit in a fresh solve too, as they did with the pre-reuse solver
+        assert not b.info["failed"], "the reused solver failed where a fresh one succeeded"
+        compared += 1
+        assert np.abs(a.points - b.points).max() < 1e-2
+        assert b.slack == pytest.approx(a.slack, abs=1e-2)
+    assert compared >= 140
+    assert reused.n_setups > 1                         # the capacity grew at least once
+
+
+def test_unused_constraint_rows_never_bind():
+    """Spare capacity rows (zero coefficients, lower bound -inf) must not change the solution."""
+    rng = np.random.default_rng(2)
+    prm = DMPCParams()
+    small, big = DMPCSolver(prm, capacity=4), DMPCSolver(prm, capacity=40)
+    for _ in range(40):
+        case = _random_case(rng)
+        a, b = small.solve(*case), big.solve(*case)
+        if a.info["failed"] or b.info["failed"]:
+            continue
+        assert np.abs(a.points - b.points).max() < 1e-2
 
 
 def test_qp_keeps_distance_from_predicted_neighbour():

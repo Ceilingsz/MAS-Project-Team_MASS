@@ -25,8 +25,8 @@ import numpy as np
 
 from mascov.common.model import AgentPolicy
 from mascov.common.types import Command, Message, Plan
-from mascov.planning.dmpc import (DMPCParams, obstacle_halfspaces, project_on_polyline, sample_polyline,
-                                  solve_dmpc)
+from mascov.planning.dmpc import (DMPCParams, DMPCSolver, obstacle_halfspaces, project_on_polyline,
+                                  sample_polyline)
 from mascov.planning.greedy import choose_viewpoint, remaining_gain
 
 KIND = "dmpc_pred"
@@ -51,6 +51,7 @@ class DMPCAgentPolicy(AgentPolicy):
         self.rng = np.random.default_rng(self.seed * 1000 + agent_id)
         self.prm = DMPCParams(horizon=self.H, dt=c.dt, v_cap=0.95 * c.v_max, clearance=c.clearance,
                               d_min=c.d_safe + self.margin, width=c.width, height=c.height, **self.dmpc_kw)
+        self.solver = DMPCSolver(self.prm)            # one OSQP object for the whole run, updated every step
         self._setup_map(world)
         self.visited: set[int] = set()
         self.banned: dict[int, float] = {}            # viewpoint -> time the ban ends
@@ -228,7 +229,7 @@ class DMPCAgentPolicy(AgentPolicy):
             prev = prev + (obs.pos - self._at_times(self.t_pred, self.pred, np.array([obs.t]))[0])[None]
         nbrs = self._neighbour_predictions(obs, times) if self.coupling else []
 
-        res = solve_dmpc(obs.pos, obs.vel, ref, prev, self.obs_hs, nbrs, self.prm)
+        res = self.solver.solve(obs.pos, obs.vel, ref, prev, self.obs_hs, nbrs)
         self.st["dmpc_solves"] += 1
         if res.info.get("failed"):
             self.st["dmpc_failures"] += 1

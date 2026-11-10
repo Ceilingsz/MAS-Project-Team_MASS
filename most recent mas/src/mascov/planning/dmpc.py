@@ -26,7 +26,8 @@ apply it, so each moves away from the other's plan; the guarantee is only "separ
 neighbour", not a proof of collision freedom, so measure collisions (and add BVC as a backstop if needed).
 
 Only the speed limit is hard, so the problem is always feasible (standing still satisfies it).
-Solved with OSQP.
+Solved with OSQP. ``DMPCSolver`` builds the problem sparse and keeps one OSQP object per drone, updating
+only values between steps instead of setting up a new solver every step.
 """
 from __future__ import annotations
 
@@ -49,6 +50,7 @@ def dmpc_available() -> bool:
 
 _DIRS = np.array([[math.cos(a), math.sin(a)] for a in np.arange(8) * (math.pi / 4)])
 _OCT = math.cos(math.pi / 8)
+_WALL_A = np.array([[1.0, 0.0], [-1.0, 0.0], [0.0, 1.0], [0.0, -1.0]])
 
 
 @dataclass
@@ -113,37 +115,18 @@ def obstacle_halfspaces(polys) -> list[ObstacleHS]:
     return out
 
 
-def solve_dmpc(p0: np.ndarray, v0: np.ndarray, ref: np.ndarray, prev: np.ndarray | None,
-               obstacles: list[ObstacleHS], neighbours: list[np.ndarray], prm: DMPCParams) -> DMPCResult:
-    """One drone's D-MPC step.
-
-    p0, v0      current position and velocity
-    ref         (H, 2) reference positions for steps 1..H
-    prev        (H, 2) this drone's previous prediction shifted to steps 1..H (linearisation point), or None
-    neighbours  list of (H, 2) predicted neighbour positions for steps 1..H
-    """
-    H, dt = prm.horizon, prm.dt
-    p0 = np.asarray(p0, float)
+def _soft_rows(p0, ref, prev, obstacles, neighbours, prm):
+    """Every soft constraint as (step k, normal a, lower bound lo): a . p_k + s >= lo. Vectorised over steps."""
+    H, dt, clr = prm.horizon, prm.dt, prm.clearance
     lin = ref if prev is None else prev
     # neighbours: with no previous solution linearise at the current position, not at the reference (a
     # reference that passes through a neighbour would put the constraint on the neighbour's far side)
     lin_n = np.repeat(p0[None], H, axis=0) if prev is None else prev
-    n_p = 2 * H
-
-    # ---- soft rows: a . p_k >= lo  ------------------------------------------------------------------
-    rows_k, rows_a, rows_lo = [], [], []
-
-    def soft(k, a, lo):
-        rows_k.append(k)
-        rows_a.append(a)
-        rows_lo.append(lo)
-
-    clr = prm.clearance
-    for k in range(H):
-        soft(k, (1.0, 0.0), clr)
-        soft(k, (-1.0, 0.0), -(prm.width - clr))
-        soft(k, (0.0, 1.0), clr)
-        soft(k, (0.0, -1.0), -(prm.height - clr))
+    steps = np.arange(H)
+    # every group is one block of H rows, row i of a block at step i (DMPCSolver's pattern relies on it)
+    K = [np.tile(steps, 4)]
+    A = [np.repeat(_WALL_A, H, axis=0)]
+    L = [np.repeat([clr, -(prm.width - clr), clr, -(prm.height - clr)], H)]
 
     reach = H * dt * prm.v_cap + prm.obstacle_reach
     n_obs = 0
@@ -152,15 +135,17 @@ def solve_dmpc(p0: np.ndarray, v0: np.ndarray, ref: np.ndarray, prev: np.ndarray
             continue
         n_obs += 1
         sd = lin @ ob.H.T - ob.b[None, :]            # (H, F) signed distance to each face's line
-        inside = sd.max(axis=1) <= 1e-9
         C, dist = closest_points(ob, lin)
-        for k in range(H):
-            if inside[k] or dist[k] < 1e-9:
-                f = int(np.argmax(sd[k]))                # inside (or on) the obstacle: push out through the nearest face
-                soft(k, ob.H[f], ob.b[f] + clr)
-            else:
-                n = (lin[k] - C[k]) / dist[k]            # supporting line through the closest point
-                soft(k, n, float(n @ C[k]) + clr)
+        n = (lin - C) / np.maximum(dist, 1e-12)[:, None]   # supporting line through the closest point
+        lo = (n * C).sum(axis=1) + clr
+        bad = (sd.max(axis=1) <= 1e-9) | (dist < 1e-9)    # inside (or on) the obstacle: push out through the nearest face
+        if bad.any():
+            f = np.argmax(sd[bad], axis=1)
+            n[bad] = ob.H[f]
+            lo[bad] = ob.b[f] + clr
+        K.append(steps)
+        A.append(n)
+        L.append(lo)
 
     n_nbr = 0
     for q in neighbours:
@@ -168,97 +153,148 @@ def solve_dmpc(p0: np.ndarray, v0: np.ndarray, ref: np.ndarray, prev: np.ndarray
         if np.min(np.linalg.norm(q - p0, axis=1)) > 2 * H * dt * prm.v_cap + prm.d_min + 0.5:
             continue                                  # cannot meet within the horizon
         n_nbr += 1
+        d = lin_n - q
+        nd = np.linalg.norm(d, axis=1)
+        tiny = nd < 1e-6
+        if tiny.any():                                # fall back to the current offset, then to +x
+            d[tiny] = p0[None] - q[tiny]
+            nd[tiny] = np.linalg.norm(d[tiny], axis=1)
+            still = nd < 1e-6
+            d[still] = (1.0, 0.0)
+            nd[still] = 1.0
+        n = d / nd[:, None]
+        K.append(steps)
+        A.append(n)
+        L.append((n * q).sum(axis=1) + prm.d_min)
+    return np.concatenate(K), np.vstack(A), np.concatenate(L), n_obs, n_nbr
+
+
+class DMPCSolver:
+    """One drone's D-MPC problem, built sparse and solved by ONE OSQP object reused between steps.
+
+    The sparsity pattern is fixed by a capacity of soft constraint rows (walls + obstacles + neighbours, in
+    blocks of H rows, row r at step r mod H, so each row has 3 entries). Unused rows get zero coefficients and a lower bound of -inf, so they never bind and their
+    slack stays 0. Each step then only updates values (q, A, bounds) and warm starts, instead of building and
+    setting up a new solver. The cost matrix P never changes. If a step needs more rows than the capacity, the
+    capacity grows and the solver is set up again.
+
+    It solves the same QP as a fresh setup; results agree to the solver tolerance (tests/test_dmpc.py).
+    """
+
+    def __init__(self, prm: "DMPCParams", capacity: int = 12):
+        self.prm = prm
+        H, dt = prm.horizon, prm.dt
+        self.n_p = 2 * H
+        w = np.full(H, prm.w_track)
+        w[-1] = prm.w_terminal
+        self.w2 = np.repeat(2 * w, 2)                  # 2 x tracking weight per coordinate
+        # velocity u = D p + d0 and its change du = E u - e0, so du = G p + g
+        D = (np.eye(self.n_p) - np.eye(self.n_p, k=-2)) / dt
+        self.E = np.eye(self.n_p) - np.eye(self.n_p, k=-2)
+        self.G = self.E @ D
+        self.Ppp = np.diag(self.w2) + 2 * prm.w_smooth * self.G.T @ self.G
+        # speed: d_m . (p_k - p_{k-1}) <= vlim, 8 directions per step (p_{-1} = p0 moves into the bound)
+        rows = []
         for k in range(H):
-            d = lin_n[k] - q[k]
-            nd = float(np.linalg.norm(d))
-            if nd < 1e-6:
-                d = p0 - q[k]
-                nd = float(np.linalg.norm(d))
-            if nd < 1e-6:
-                d, nd = np.array([1.0, 0.0]), 1.0
-            n = d / nd
-            soft(k, n, float(n @ q[k]) + prm.d_min)
+            for dm in _DIRS:
+                a = np.zeros(self.n_p)
+                a[2 * k:2 * k + 2] = dm
+                if k:
+                    a[2 * (k - 1):2 * k] = -dm
+                rows.append(a)
+        self.speed = sp.coo_matrix(np.asarray(rows))
+        self.speed_hi = np.full(8 * H, prm.v_cap * _OCT * dt)
+        self.n_setups = 0
+        self._setup(max(capacity, 4) * H)
 
-    S = len(rows_k)
-    nx = n_p + S
+    def _setup(self, rows: int) -> None:
+        """Fix the pattern for `rows` soft rows and set up OSQP once."""
+        n_p, prm = self.n_p, self.prm
+        S = self.rows = rows
+        self.nx = n_p + S
+        P = sp.block_diag((sp.csc_matrix(np.triu(self.Ppp)), 2 * prm.rho2 * sp.eye(S)), format="csc")
+        # A = [speed rows | 0], soft rows (row r at step r mod H: its two position columns + its slack), then
+        # s >= 0. Entry positions in the CSC data array are found once with distinct marker values, so the
+        # pattern keeps its zeros and every later update writes values in the right order.
+        r = np.arange(S)
+        k = r % self.prm.horizon
+        m_speed = self.speed.shape[0]
+        row = np.concatenate([self.speed.row, m_speed + r, m_speed + r, m_speed + r, m_speed + S + r])
+        col = np.concatenate([self.speed.col, 2 * k, 2 * k + 1, n_p + r, n_p + r])
+        self.m = m_speed + 2 * S
+        mark = sp.csc_matrix((np.arange(1, len(row) + 1, dtype=float), (row, col)), shape=(self.m, self.nx))
+        mark.sort_indices()
+        self.perm = mark.data.astype(int) - 1
+        A = mark.copy()
+        A.data = self._values(np.zeros(0, dtype=int), np.zeros((0, 2)))
+        self.solver = osqp.OSQP(algebra="builtin")     # explicit: the default probes for GPU/MKL backends by import
+        self.solver.setup(P, np.zeros(self.nx), A, np.full(self.m, -np.inf), np.full(self.m, np.inf),
+                          verbose=False, eps_abs=1e-5, eps_rel=1e-5, max_iter=8000, polishing=True)
+        self.n_setups += 1
 
-    # ---- cost ---------------------------------------------------------------------------------------
-    w = np.full(H, prm.w_track)
-    w[-1] = prm.w_terminal
-    Pd = np.zeros((nx, nx))
-    q = np.zeros(nx)
-    for k in range(H):
-        Pd[2 * k:2 * k + 2, 2 * k:2 * k + 2] += 2 * w[k] * np.eye(2)
-        q[2 * k:2 * k + 2] += -2 * w[k] * ref[k]
-    # velocity u = Dp + d0 (2H x 2H)
-    D = np.zeros((n_p, n_p))
-    d0 = np.zeros(n_p)
-    for k in range(H):
-        D[2 * k:2 * k + 2, 2 * k:2 * k + 2] += np.eye(2) / dt
-        if k == 0:
-            d0[0:2] = -p0 / dt
-        else:
-            D[2 * k:2 * k + 2, 2 * (k - 1):2 * k] -= np.eye(2) / dt
-    # delta u = E u - e0
-    E = np.eye(n_p)
-    for k in range(1, H):
-        E[2 * k:2 * k + 2, 2 * (k - 1):2 * k] -= np.eye(2)
-    e0 = np.zeros(n_p)
-    e0[0:2] = np.asarray(v0, float)
-    G = E @ D
-    g = E @ d0 - e0
-    Pd[:n_p, :n_p] += 2 * prm.w_smooth * G.T @ G
-    q[:n_p] += 2 * prm.w_smooth * G.T @ g
-    if S:
-        Pd[n_p:, n_p:] += 2 * prm.rho2 * np.eye(S)
-        q[n_p:] += prm.rho1
+    def _values(self, K: np.ndarray, Aa: np.ndarray) -> np.ndarray:
+        """A's values in CSC order for soft rows at steps K with normals Aa (rows beyond len(K) are zero)."""
+        S = self.rows
+        assert np.array_equal(K, np.arange(len(K)) % self.prm.horizon), "soft rows must come in step-ordered blocks"
+        a0 = np.zeros(S)
+        a1 = np.zeros(S)
+        a0[:len(K)] = Aa[:, 0]
+        a1[:len(K)] = Aa[:, 1]
+        vals = np.concatenate([self.speed.data, a0, a1, np.ones(S), np.ones(S)])
+        return vals[self.perm]
 
-    # ---- constraints l <= A x <= u ------------------------------------------------------------------
-    A_rows, lo, hi = [], [], []
-    vlim = prm.v_cap * _OCT * dt
-    for k in range(H):
-        for dm in _DIRS:                               # d . (p_k - p_{k-1}) <= vlim
-            a = np.zeros(nx)
-            a[2 * k:2 * k + 2] = dm
-            off = 0.0
-            if k == 0:
-                off = float(dm @ p0)
-            else:
-                a[2 * (k - 1):2 * k] = -dm
-            A_rows.append(a)
-            lo.append(-np.inf)
-            hi.append(vlim + off)
-    for r, (k, a2, l2) in enumerate(zip(rows_k, rows_a, rows_lo)):
-        a = np.zeros(nx)
-        a[2 * k:2 * k + 2] = a2
-        a[n_p + r] = 1.0
-        A_rows.append(a)
-        lo.append(l2)
-        hi.append(np.inf)
-    if S:
-        A_rows.extend(np.eye(nx)[n_p:])               # s >= 0
-        lo.extend([0.0] * S)
-        hi.extend([np.inf] * S)
-    A = np.asarray(A_rows)
+    def solve(self, p0, v0, ref, prev, obstacles, neighbours) -> "DMPCResult":
+        """One drone's D-MPC step.
 
-    # warm start: previous prediction (or hold) with slacks at zero
-    x0 = np.zeros(nx)
-    x0[:n_p] = (lin if prev is not None else np.repeat(p0[None], H, axis=0)).ravel()
+        p0, v0      current position and velocity
+        ref         (H, 2) reference positions for steps 1..H
+        prev        (H, 2) this drone's previous prediction shifted to steps 1..H (linearisation point), or None
+        neighbours  list of (H, 2) predicted neighbour positions for steps 1..H
+        """
+        prm, H, n_p = self.prm, self.prm.horizon, self.n_p
+        p0 = np.asarray(p0, float)
+        ref = np.asarray(ref, float)
+        K, Aa, Lo, n_obs, n_nbr = _soft_rows(p0, ref, prev, obstacles, neighbours, prm)
+        if len(K) > self.rows:
+            self._setup(int(math.ceil(len(K) / H)) * H + 4 * H)
+        S = self.rows
 
-    solver = osqp.OSQP()
-    solver.setup(sp.csc_matrix(np.triu(Pd)), q, sp.csc_matrix(A), np.asarray(lo), np.asarray(hi),
-                 verbose=False, eps_abs=1e-5, eps_rel=1e-5, max_iter=8000, polishing=True)
-    solver.warm_start(x=x0)
-    res = solver.solve(raise_error=False)
-    status = str(res.info.status)
-    ok = res.x is not None and np.all(np.isfinite(res.x)) and "solved" in status.lower()
-    if not ok:
-        pts = np.repeat(p0[None], H + 1, axis=0)       # hold: always within the speed limit
-        return DMPCResult(pts, status, math.inf, len(A_rows), dict(n_obs=n_obs, n_nbr=n_nbr, failed=True))
-    x = res.x
-    P = np.vstack([p0[None], x[:n_p].reshape(H, 2)])
-    slack = float(x[n_p:].max()) if S else 0.0
-    return DMPCResult(P, status, max(0.0, slack), len(A_rows), dict(n_obs=n_obs, n_nbr=n_nbr, failed=False))
+        d0 = np.zeros(n_p)
+        d0[:2] = -p0 / prm.dt
+        e0 = np.zeros(n_p)
+        e0[:2] = np.asarray(v0, float)
+        g = self.E @ d0 - e0
+        q = np.empty(self.nx)
+        q[:n_p] = -self.w2 * ref.ravel() + 2 * prm.w_smooth * self.G.T @ g
+        q[n_p:] = prm.rho1
+
+        hi_speed = self.speed_hi.copy()
+        hi_speed[:8] += _DIRS @ p0                     # step 0 is measured from the current position
+        lo = np.concatenate([np.full(8 * H, -np.inf), np.full(S, -np.inf), np.zeros(S)])
+        lo[8 * H:8 * H + len(K)] = Lo
+        hi = np.concatenate([hi_speed, np.full(2 * S, np.inf)])
+
+        self.solver.update(q=q, l=lo, u=hi, Ax=self._values(K, Aa))
+        x0 = np.zeros(self.nx)
+        x0[:n_p] = (prev if prev is not None else np.repeat(p0[None], H, axis=0)).ravel()
+        self.solver.warm_start(x=x0, y=np.zeros(self.m))
+        res = self.solver.solve(raise_error=False)
+        status = str(res.info.status)
+        n_con = 8 * H + 2 * len(K)
+        ok = res.x is not None and np.all(np.isfinite(res.x)) and "solved" in status.lower()
+        if not ok:
+            pts = np.repeat(p0[None], H + 1, axis=0)   # hold: always within the speed limit
+            return DMPCResult(pts, status, math.inf, n_con, dict(n_obs=n_obs, n_nbr=n_nbr, failed=True))
+        x = res.x
+        P = np.vstack([p0[None], x[:n_p].reshape(H, 2)])
+        slack = float(x[n_p:n_p + len(K)].max()) if len(K) else 0.0
+        return DMPCResult(P, status, max(0.0, slack), n_con, dict(n_obs=n_obs, n_nbr=n_nbr, failed=False))
+
+
+def solve_dmpc(p0: np.ndarray, v0: np.ndarray, ref: np.ndarray, prev: np.ndarray | None,
+               obstacles: list[ObstacleHS], neighbours: list[np.ndarray], prm: DMPCParams) -> DMPCResult:
+    """One-off D-MPC step with a fresh solver (convenient in tests; a drone keeps one DMPCSolver instead)."""
+    return DMPCSolver(prm).solve(p0, v0, ref, prev, obstacles, neighbours)
 
 
 def sample_polyline(path: list[np.ndarray] | np.ndarray, s: np.ndarray) -> np.ndarray:
