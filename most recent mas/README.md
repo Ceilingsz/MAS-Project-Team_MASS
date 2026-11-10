@@ -6,14 +6,90 @@ with polygonal obstacles using several single-integrator drones.
 ## Setup
 
 ```bash
-pip install -e ".[dev]"          # numpy, shapely>=2, matplotlib, pytest
-python -m pytest -q              # run from the repository root
+pip install -e ".[dev,dmpc]"     # numpy, shapely>=2, matplotlib, scipy, pytest, osqp (D-MPC)
+python -m pytest -q              # run from the repository root (about 7 min; see "Testing")
 PYTHONPATH=src:. python scripts/demo_greedy.py sparse 0
 ```
 
 Run everything from the repository root so that `models/` is importable.
 Optional, for the STL planners: `pip install -e ".[stl]"` (adds `scipy`, which bundles the HiGHS MILP solver: no licence, no size limit).
 Without scipy the STL tests skip and `import models` simply omits `stl_single` and `stl_team`.
+Optional, for D-MPC: `pip install -e ".[dmpc]"` (OSQP). Without it `greedy+dmpc` is not registered and its tests skip.
+
+## Testing
+
+The suite has two layers that answer different questions.
+
+**1. Component tests: is each part correct?** Each file tests one part in isolation, with exact expectations:
+
+| file | what it checks |
+|---|---|
+| `test_geometry.py` | half-spaces, line of sight (corners do not block), visibility-graph planner (detours, snapping, unreachable) |
+| `test_world.py` | targets avoid obstacles, invalid starts and non-convex obstacles are rejected, sensing, benchmark maps valid and seed-reproducible, lower bounds |
+| `test_sim.py` | plans, single-integrator dynamics, tracker accuracy and speed limit, collision detection, message range, decentralised models see only their own observation, every benchmark map is coverable |
+| `test_unknown.py` | the unknown-map interface leaks nothing, map beliefs merge as a join, obstacles are learned only by sensing, frontier explorers (incl. a regression for a drone driven into a known obstacle) |
+| `test_framework.py` | metrics (visits, milestones, collision episodes), separate sensing and message ranges, negotiation rounds, experiment runner and plots |
+| `test_baselines.py` | greedy viewpoint choice, the shared `Navigator` (shortest path at planning speed, arrival within `sense_slack`, replanning, blocked goals, and that it has no drone-drone logic), the static partition, per-model contracts (e.g. "sends no messages") |
+| `test_safety.py` | the BVC filter: never leaves its cell, forced collisions happen without it and not with it, it makes a colliding model collision-free |
+| `test_stl.py`, `test_stl_encoding.py` | the MILP encoding and the independent plan verifier (STL planners) |
+| `test_dmpc.py` | the D-MPC QP (speed limit, walls, obstacles, neighbour separation), coupling on vs off in forced crossings, solver never fails |
+
+**2. Model quality suite (`test_model_quality.py`): how good is each model?** Every registered model runs on the same
+scenarios and is graded by the same criteria. A model that falls short **fails** the criterion; the tests are not
+written so that every model passes. A registered model that is not in the suite's model table fails
+`test_every_model_is_graded`, so no model can skip it.
+
+| criterion | passes when |
+|---|---|
+| `completes` | true coverage reaches 100% within the time budget |
+| `obstacle_safe` | no drone comes within its body radius of an obstacle or wall |
+| `drone_safe` | no two drones ever come closer than `d_safe` |
+| `tracking` | tracking error stays within `eps_track`, the margin every planner's clearance assumes |
+| `knows_when_done` | every drone declares done, the team does not stop before full coverage, the last drone notices within 20 s |
+| `efficient` | coverage time <= 1.5 x the centralised greedy reference on the same scenario |
+| `team_speedup` | 3 drones take <= 0.6 x the time 1 drone of the same model takes (perfect sharing: 1/3) |
+| `reproducible` | the same scenario and seed give the identical trajectory |
+
+Scenarios (all with `eps_track` = 0.45 and 2 m start spacing, which the STL planners need, so every model faces the same
+world): `solo` (1 drone, `rooms_and_door`), `team` (3 drones, `rooms_and_door`), `clutter` (3 drones, `cluttered` seed 1),
+`low_comm` (`team` with messages and neighbour sensing limited to 1.5 m; decentralised models only). Each run is simulated
+once per session and shared by all criteria.
+
+**Known gaps.** A shortfall that is understood is listed in `KNOWN_GAPS` in `test_model_quality.py` with its measured
+numbers. It runs as a *strict* xfail: the suite stays green and lists it as `XFAIL`, and if the model improves so the
+criterion passes, the test fails as `XPASS(strict)` until the entry is deleted, so the table cannot go stale. Do not loosen
+a threshold to make a model pass; record the gap.
+
+```bash
+python -m pytest -q                                   # everything (very long cases skipped)
+python -m pytest -q -m "not quality"                  # component tests only (~2 min)
+python -m pytest -q tests/test_model_quality.py -rx   # the report card, with each known gap and its numbers
+python -m pytest -q tests/test_model_quality.py --runxfail   # every gap as a plain failure
+python -m pytest -q --slow                            # also the very long cases (stl_team on clutter, ~12 min)
+```
+
+**Report card** (measured 2026-11-10; `-` = not applicable; details and numbers in `KNOWN_GAPS`):
+
+| model | completes | obstacle safe | drone safe | tracking | knows when done | efficient | team speedup | reproducible |
+|---|---|---|---|---|---|---|---|---|
+| `greedy_single` | pass | pass | - | pass | pass | pass | - | - |
+| `greedy_centralised` | pass | pass | **fail**: clutter (pass: team) | pass | pass | - | pass | pass |
+| `greedy_uncoordinated` | pass | pass | **fail**: team, clutter, low_comm | pass | **fail**: team, clutter, low_comm (pass: solo) | **fail**: team, clutter (pass: solo) | **fail**: team | pass |
+| `static_partition` | pass | pass | **fail**: clutter (pass: team, low_comm) | pass | pass | pass | pass | pass |
+| `greedy+dmpc` | pass | pass | pass | pass | **fail**: team, clutter, low_comm (pass: solo) | **fail**: team, clutter (pass: solo) | **fail**: team | pass |
+| `frontier_greedy` | pass | pass | **fail**: team, clutter, low_comm | pass | **fail**: team, clutter, low_comm (pass: solo) | **fail**: team, clutter (pass: solo) | pass | pass |
+| `frontier_greedy_shared` | pass | pass | **fail**: team, clutter, low_comm | pass | pass | **fail**: team, clutter (pass: solo) | pass | pass |
+| `stl_single` | pass | pass | - | pass | pass | pass | - | - |
+| `stl_team` | pass (clutter: --slow) | pass (clutter: --slow) | pass (clutter: --slow) | pass (clutter: --slow) | pass (clutter: --slow) | **fail**: team (pass: solo) (clutter: --slow) | pass | pass |
+
+What it says:
+* **Drone-drone safety is the main gap.** Every model built on the shared `Navigator` collided somewhere, including the
+  centralised reference on `clutter`. Only `greedy+dmpc` and `stl_team` were collision-free in every graded scenario.
+* **Coordination decides speed.** Only the models that split the work (`greedy_centralised`, `static_partition`) are within
+  1.5 x of the reference with 3 drones; `greedy+dmpc` uses the uncoordinated greedy goals, so it is safe but no faster than
+  `greedy_uncoordinated`, and its 3-drone team is barely faster than one drone (0.91 x).
+* **Without sharing, drones notice late** that the map is covered (21-96 s after the fact).
+* `low_comm` (1.5 m) changed nothing for models that never communicate, as expected; it is the lever for communicating models.
 
 ## The world model (what is simulated)
 
@@ -126,6 +202,11 @@ What this shows (and what it does not):
   so "close to the bound" is not a realistic bar for these maps.
 
 ## Collision handling in the baselines is a heuristic, not a guarantee
+
+> **Out of date.** The current `planning/navigator.py` has **no drone-drone logic at all**: it flies the shortest path and
+> ignores neighbours (`tests/test_baselines.py::test_navigator_has_no_drone_drone_logic`). The yield/sidestep rule described
+> below no longer exists, so the baselines collide whenever their drones' paths cross. Safety comes from `SimConfig(safety="bvc")`,
+> `greedy+dmpc` or `stl_team`. The collision numbers below were measured with the old rule.
 
 `planning/navigator.py` is the rule all multi-drone baselines share: stationary neighbours are routed around; moving
 higher-priority neighbours are predicted over 2.5 s and yielded to (hold, else sidestep, resume when clear); every neighbour
@@ -269,6 +350,31 @@ All 60 runs complete. Mean coverage time in seconds:
 
 **Not done:** the distributed (per-agent) STL variants (partition + per-drone STL, claim-based allocation + STL), asynchronous
 windows, and replanning for unknown maps (the unknown-map *interface* exists, see above, but STL does not use it).
+
+## D-MPC trajectory layer (`mascov/planning/dmpc.py`, `models/greedy_dmpc`)
+
+`greedy+dmpc` = greedy viewpoint goals (each drone's own belief, same rule as B3) + distributed MPC trajectories.
+Needs `pip install -e ".[dmpc]"` (OSQP); without it `import models` omits the model and `tests/test_dmpc.py` skips.
+
+* **Every control step (0.1 s) each drone solves its own QP** over H steps (`horizon`, default 10 = 1 s): follow a
+  reference sampled along the shortest path to its goal at planning speed, smooth velocities, speed inside an octagon
+  inscribed in the `v_max` disc (0.95 `v_max`, hard). Walls and obstacles (inflated by `clearance`) are soft
+  constraints: per nearby obstacle and step, the line through the obstacle point closest to last step's prediction.
+  (An earlier version used the obstacle *face* the prediction was furthest outside of; past a corner that line can cut
+  through the drone far from the obstacle, and it stalled drones in `cluttered`/`sparse`.)
+* **Coupling** (`coupling=True`): each drone broadcasts its predicted path (H+1 points) to drones within `r_comm`; it
+  arrives one step later and is time-shifted and re-anchored at the sensed position. Each neighbour's prediction enters
+  as a linearised separation constraint `n . (p_k - q_k) >= d_safe + margin` (`margin` default 0.1 m), soft with a heavy
+  penalty so the QP is always feasible. Sensed neighbours with no prediction yet are extrapolated at constant velocity.
+  `coupling=False` ignores other drones and sends nothing (the ablation). The navigator heuristic is not used.
+* **Deadlocks**: a drone that moved < 0.15 m/s for 2 s sidesteps to its right (small random tilt) for 1.5 s; after 3
+  sidesteps for one goal it bans that goal for 10 s. Counted in `RunResult.extra` (`dmpc_deadlock_nudges`, `dmpc_abandoned`),
+  along with `dmpc_solves`, `dmpc_failures` (QP not solved: drone holds), `dmpc_slack_steps`, `dmpc_max_slack`.
+* **Not a guarantee**: separation is enforced against the neighbour's *predicted* path, one step old. Measure collisions;
+  `SimConfig(safety="bvc")` can be added as a backstop. Options: `coupling`, `horizon`, `margin`, `share` (also broadcast
+  and merge coverage beliefs), `decision_period`, `seed`, plus any `DMPCParams` weight.
+* Compute: about 3-5 ms per solve with dense matrix assembly, so a 4-drone run takes ~1 min of wall time (greedy: ~2 s).
+  `layer 1` is replaceable: subclass `DMPCAgentPolicy` and override `select_goal` (for `cbba+dmpc`).
 
 ## Unknown-map interface (`SimConfig(known_map=False)`)
 

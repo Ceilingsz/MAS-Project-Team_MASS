@@ -89,13 +89,16 @@ def test_no_collisions_when_the_communication_radius_covers_one_step_of_closing_
         assert run(starts, goals, "bvc", r_comm=needed + 0.05).collision_events == 0, name
 
 
-def test_filter_removes_the_collisions_the_heuristic_rule_could_not():
-    w = make_world("sparse", n_agents=4, seed=0)                  # B3 hit 0.035 m here without the filter
+def test_filter_makes_a_colliding_model_collision_free():
+    """greedy_uncoordinated has no drone-drone avoidance and collides here; the filter alone must fix that."""
+    w = make_world("sparse", n_agents=4, seed=0)
+    raw = Simulator(w, get_model("greedy_uncoordinated"), SimConfig(max_time=600)).run()
     r = Simulator(w, get_model("greedy_uncoordinated"), SimConfig(max_time=600, safety="bvc")).run()
+    assert raw.pair_events > 0                                    # the scenario really is unsafe without it
     assert r.completed and r.collision_events == 0 and r.min_pair_dist >= w.cfg.d_safe
 
 
-def test_filter_costs_little_time_when_the_heuristic_already_avoids_conflicts():
+def test_filter_costs_little_time_when_drones_rarely_conflict():
     w = make_world("empty", n_agents=3)
     off = Simulator(w, get_model("greedy_centralised"), SimConfig(max_time=600)).run()
     on = Simulator(w, get_model("greedy_centralised"), SimConfig(max_time=600, safety="bvc")).run()

@@ -12,6 +12,7 @@ dependencies = ["numpy>=1.24", "shapely>=2.0", "matplotlib>=3.7", "scipy>=1.9"]
 [project.optional-dependencies]
 dev = ["pytest>=7"]
 stl = ["scipy>=1.9"]          # scipy bundles the HiGHS MILP solver used by the STL planners
+dmpc = ["osqp>=1.0"]          # QP solver for the D-MPC trajectory layer (models/greedy_dmpc)
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -19,3 +20,4 @@ where = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["src", "."]
 testpaths = ["tests"]
+markers = ["quality: model quality suite (simulates every model; deselect with -m \"not quality\")"]
