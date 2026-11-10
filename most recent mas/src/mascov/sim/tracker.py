@@ -1,7 +1,7 @@
 """The shared low-level tracker: every model's timed plan is executed by this controller.
 
 Using one tracker for all models keeps comparisons fair, and its measured deviation from the
-reference path is the epsilon the STL layer needs.
+reference path is the epsilon (eps_track) every planner's clearance assumes.
 """
 from __future__ import annotations
 

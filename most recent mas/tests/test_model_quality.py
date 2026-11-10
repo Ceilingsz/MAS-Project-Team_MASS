@@ -27,7 +27,6 @@ Criteria
 
 Scenarios (tests/quality_runs.py): solo (1 drone, rooms_and_door), team (3 drones, rooms_and_door),
 clutter (3 drones, cluttered seed 1), low_comm (team with messages and neighbour sensing limited to 1.5 m).
-Very long cases (quality_runs.SLOW) run only with ``pytest --slow``.
 """
 from __future__ import annotations
 
@@ -84,7 +83,6 @@ KNOWN_GAPS: dict[tuple[str, str, str], str] = {
     ("efficient", "frontier_greedy", "clutter"): "118.8 s = 1.68 x reference; no sharing, map unknown",
     ("efficient", "frontier_greedy_shared", "team"): "94.7 s = 1.72 x reference; beliefs shared but no intent sharing",
     ("efficient", "frontier_greedy_shared", "clutter"): "111.8 s = 1.58 x reference; beliefs shared but no intent sharing",
-    ("efficient", "stl_team", "team"): "89.3 s = 1.62 x reference; synchronous windows make early finishers wait",
     # team_speedup: three drones barely faster than one
     ("team_speedup", "greedy_uncoordinated", "team"): "3 drones 141.7 s vs 1 drone 187.9 s = 0.75; duplicated work",
     ("team_speedup", "frontier+dmpc", "team"): "3 drones 159.2 s vs 1 drone 165.1 s = 0.96; duplicated work (share=True "
@@ -106,8 +104,6 @@ def _cases(criterion, scenarios, multi_only=False, skip_models=()):
             why = Q.available(m)
             if why:
                 marks.append(pytest.mark.skip(reason=why))
-            if (m, s) in Q.SLOW:
-                marks.append(pytest.mark.slow)
             gap = KNOWN_GAPS.get((criterion, m, s))
             if gap:
                 marks.append(pytest.mark.xfail(strict=True, reason=f"known gap: {gap}"))

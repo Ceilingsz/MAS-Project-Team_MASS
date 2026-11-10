@@ -154,7 +154,7 @@ def test_navigator_holds_on_an_unreachable_goal_and_when_the_goal_is_cleared():
 
 def test_navigator_has_no_drone_drone_logic():
     """Documents the contract: neighbours do not change the route. Drone-drone safety must come from a
-    safety layer (SimConfig(safety="bvc")) or a trajectory planner (greedy+dmpc, stl_team). If avoidance is
+    safety layer (SimConfig(safety="bvc")) or a trajectory planner (greedy+dmpc, frontier+dmpc). If avoidance is
     added to the navigator again, replace this test with tests of that behaviour."""
     w = make_world("empty", n_agents=1)
     plans = []

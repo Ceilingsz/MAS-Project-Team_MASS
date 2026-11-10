@@ -4,9 +4,9 @@ Every registered model is run on the SAME worlds and judged by the SAME criteria
 quality of each model rather than checking that each model passes the tests written for it. Each
 (model, scenario) pair is simulated once per test session and shared by every criterion.
 
-One world configuration for all models: eps_track = 0.45 and 2 m start spacing. The STL planners need both
-(their tracking-error assumption and their joint separation at t = 0); every other model runs fine with them,
-and using them for everyone keeps the comparison fair.
+One world configuration for all models: eps_track = 0.45 and 2 m start spacing. They were chosen when the
+suite also graded the (since removed) STL planners, which needed both; every KNOWN_GAPS number was measured
+with them, so change them only together with a re-measurement of the whole table.
 """
 from __future__ import annotations
 
@@ -43,8 +43,6 @@ MODELS: dict[str, ModelInfo] = {m.name: m for m in [
     ModelInfo("frontier+dmpc", interface="unknown"),
     ModelInfo("frontier_greedy", interface="unknown"),
     ModelInfo("frontier_greedy_shared", interface="unknown"),
-    ModelInfo("stl_single", single_only=True),
-    ModelInfo("stl_team", centralised=True),
 ]}
 
 REFERENCE = "greedy_centralised"      # the efficiency yardstick
@@ -82,9 +80,6 @@ def applies(model: str, scenario: str) -> str | None:
         return "centralised: a communication range does not apply"
     return None
 
-
-# Cases that take far longer than the rest; they run only with ``pytest --slow`` (see tests/conftest.py).
-SLOW = {("stl_team", "clutter"): "joint MILP for 3 drones among many obstacles: about 12 min"}
 
 
 def available(model: str) -> str | None:
