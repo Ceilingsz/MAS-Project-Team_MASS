@@ -1,6 +1,6 @@
 """Lower bounds on coverage time: a floor no method can beat (approximately).
 
-Both bounds ignore acceleration limits and other drones, so they are optimistic. The reach
+Both bounds ignore other drones and tracking error, so they are optimistic. The reach
 bound works on the candidate-viewpoint lattice, so a sampling slack is subtracted.
 """
 from __future__ import annotations

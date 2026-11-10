@@ -30,6 +30,8 @@ class GreedyAgentPolicy(AgentPolicy):
         self.done = False
 
     def _neighbors(self, obs) -> list[Neighbor]:
+        if not self.w.cfg.yield_to_neighbors:
+            return []                                    # drones ignore each other (the "no safety" baseline)
         return [Neighbor(j, p, obs.neighbor_vels.get(j, np.zeros(2)), higher=j < self.id)
                 for j, p in obs.neighbors.items()]
 

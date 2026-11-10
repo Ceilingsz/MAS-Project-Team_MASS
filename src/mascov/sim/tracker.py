@@ -1,7 +1,7 @@
 """The shared low-level tracker: every model's timed plan is executed by this controller.
 
 Using one tracker for all models keeps comparisons fair, and its measured deviation from the
-reference path is the epsilon the STL layer needs.
+reference path is the epsilon (eps_track) every planner's clearance assumes.
 """
 from __future__ import annotations
 
@@ -11,26 +11,33 @@ from mascov.common.types import Plan
 
 
 class PlanTracker:
-    """PD law on a time-parameterised reference (critically damped at natural frequency omega)."""
+    """Proportional law with velocity feedforward on a time-parameterised reference.
 
-    def __init__(self, omega: float, a_max: float):
-        self.kp = omega ** 2
-        self.kd = 2.0 * omega
-        self.a_max = a_max
+    The drone is a single integrator (p' = u), so the command is a velocity:
 
-    def accel(self, t: float, pos: np.ndarray, vel: np.ndarray,
-              plan: Plan | None, hold_point: np.ndarray) -> tuple[np.ndarray, float]:
-        """Return (commanded acceleration, position error w.r.t. the reference)."""
+        u = v_ref + gain * (p_ref - p),        clipped to ||u|| <= v_max
+
+    Along a reference moving at constant velocity the position error obeys e' = -gain * e, so it decays
+    exponentially and stays at zero once it is zero.
+    """
+
+    def __init__(self, gain: float, v_max: float):
+        self.gain = gain
+        self.v_max = v_max
+
+    def velocity(self, t: float, pos: np.ndarray, plan: Plan | None,
+                 hold_point: np.ndarray) -> tuple[np.ndarray, float]:
+        """Return (commanded velocity, position error w.r.t. the reference)."""
         if plan is None:
             ref_p, ref_v = hold_point, np.zeros(2)
         else:
             ref_p, ref_v = plan.ref(t)
         err = ref_p - pos
-        acc = self.kp * err + self.kd * (ref_v - vel)
-        n = float(np.linalg.norm(acc))
-        if n > self.a_max:
-            acc = acc * (self.a_max / n)
-        return acc, float(np.linalg.norm(err))
+        u = ref_v + self.gain * err
+        n = float(np.linalg.norm(u))
+        if n > self.v_max:
+            u = u * (self.v_max / n)
+        return u, float(np.linalg.norm(err))
 
     @staticmethod
     def finished(t: float, pos: np.ndarray, vel: np.ndarray, plan: Plan | None,

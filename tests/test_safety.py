@@ -8,7 +8,7 @@ from mascov.common.config import SimConfig, WorldConfig
 from mascov.common.model import CentralModel, get_model
 from mascov.common.types import Command, Plan
 from mascov.maps.benchmarks import make_world
-from mascov.safety.bvc import bvc_filter, stopping_point
+from mascov.safety.bvc import bvc_filter
 from mascov.sim.simulator import Simulator
 from mascov.world.world import World
 
@@ -46,24 +46,30 @@ SCENARIOS = {
 }
 
 
-def test_stopping_point_formula():
-    s = stopping_point(np.array([1.0, 1.0]), np.array([0.6, 0.0]), 1.4)
-    assert np.allclose(s, [1.0 + 0.36 / 2.8, 1.0])
-
-
 def test_filter_leaves_safe_commands_alone():
-    a, changed = bvc_filter(np.zeros(2), np.zeros(2), np.array([1.0, 0.0]), np.zeros((0, 2)), np.zeros((0, 2)),
-                            dt=0.1, a_max=2.0, d_safe=0.3)
-    assert not changed and np.allclose(a, [1.0, 0.0])
-    far, _ = bvc_filter(np.zeros(2), np.zeros(2), np.array([1.0, 0.0]), np.array([[20.0, 0.0]]), np.zeros((1, 2)),
-                        dt=0.1, a_max=2.0, d_safe=0.3)
-    assert np.allclose(far, [1.0, 0.0])
+    v, changed = bvc_filter(np.zeros(2), np.array([1.0, 0.0]), np.zeros((0, 2)), dt=0.1, v_max=1.0, d_safe=0.3)
+    assert not changed and np.allclose(v, [1.0, 0.0])
+    far, changed = bvc_filter(np.zeros(2), np.array([1.0, 0.0]), np.array([[20.0, 0.0]]), dt=0.1, v_max=1.0, d_safe=0.3)
+    assert not changed and np.allclose(far, [1.0, 0.0])
 
 
-def test_filter_blocks_acceleration_into_a_close_neighbor():
-    a, changed = bvc_filter(np.zeros(2), np.array([0.6, 0.0]), np.array([2.0, 0.0]),
-                            np.array([[0.5, 0.0]]), np.zeros((1, 2)), dt=0.1, a_max=2.0, d_safe=0.3)
-    assert changed and a[0] < 0                                   # must brake, not accelerate
+def test_filter_limits_the_step_towards_a_close_neighbor():
+    # neighbour 0.5 m ahead: each drone may close at most (0.5 - d_safe) / 2 = 0.1 m this step (less the buffer)
+    v, changed = bvc_filter(np.zeros(2), np.array([1.0, 0.0]), np.array([[0.5, 0.0]]), dt=0.1, v_max=1.0, d_safe=0.3)
+    assert changed and 0.0 <= v[0] * 0.1 <= 0.1
+
+
+def test_filter_never_commands_a_step_that_leaves_the_cell():
+    rng = np.random.default_rng(0)
+    d_safe, dt = 0.3, 0.1
+    for _ in range(300):
+        k = int(rng.integers(1, 5))
+        ang, dist = rng.uniform(0, 2 * math.pi, k), rng.uniform(0.4, 1.5, k)        # every neighbour currently >= d_safe away
+        nbrs = np.c_[dist * np.cos(ang), dist * np.sin(ang)]
+        v, _ = bvc_filter(np.zeros(2), rng.uniform(-1, 1, 2), nbrs, dt=dt, v_max=1.0, d_safe=d_safe)
+        assert np.linalg.norm(v) <= 1.0 + 1e-9
+        n = nbrs / np.linalg.norm(nbrs, axis=1, keepdims=True)
+        assert np.all(n @ (v * dt) <= 0.5 * np.linalg.norm(nbrs, axis=1) - 0.5 * d_safe + 1e-9)
 
 
 @pytest.mark.parametrize("name", sorted(SCENARIOS))
@@ -75,22 +81,24 @@ def test_forced_collisions_happen_without_the_filter_and_not_with_it(name):
     assert r.min_pair_dist >= WorldConfig().d_safe
 
 
-def test_minimum_communication_radius_matches_the_analytic_estimate():
+def test_no_collisions_when_the_communication_radius_covers_one_step_of_closing_speed():
     cfg = WorldConfig()
-    v = cfg.plan_speed
-    needed = cfg.d_safe + 2 * v * v / (0.7 * cfg.a_max) + 2 * v * cfg.dt        # ~0.68 m at plan speed
-    starts, goals = SCENARIOS["head_on"]
-    assert run(starts, goals, "bvc", r_comm=needed + 0.15).collision_events == 0
-    assert run(starts, goals, "bvc", r_comm=0.5).collision_events >= 1          # too short to react in time
+    needed = cfg.d_safe + 2 * cfg.v_max * cfg.dt + 0.02       # a neighbour must be sensed before it can get within d_safe in one step
+    for name in ("head_on", "four_swap"):
+        starts, goals = SCENARIOS[name]
+        assert run(starts, goals, "bvc", r_comm=needed + 0.05).collision_events == 0, name
 
 
-def test_filter_removes_the_collisions_the_heuristic_rule_could_not():
-    w = make_world("sparse", n_agents=4, seed=0)                  # B3 hit 0.035 m here without the filter
+def test_filter_makes_a_colliding_model_collision_free():
+    """greedy_uncoordinated has no drone-drone avoidance and collides here; the filter alone must fix that."""
+    w = make_world("sparse", n_agents=4, seed=0)
+    raw = Simulator(w, get_model("greedy_uncoordinated"), SimConfig(max_time=600)).run()
     r = Simulator(w, get_model("greedy_uncoordinated"), SimConfig(max_time=600, safety="bvc")).run()
+    assert raw.pair_events > 0                                    # the scenario really is unsafe without it
     assert r.completed and r.collision_events == 0 and r.min_pair_dist >= w.cfg.d_safe
 
 
-def test_filter_costs_little_time_when_the_heuristic_already_avoids_conflicts():
+def test_filter_costs_little_time_when_drones_rarely_conflict():
     w = make_world("empty", n_agents=3)
     off = Simulator(w, get_model("greedy_centralised"), SimConfig(max_time=600)).run()
     on = Simulator(w, get_model("greedy_centralised"), SimConfig(max_time=600, safety="bvc")).run()

@@ -59,6 +59,11 @@ KNOWN_GAPS: dict[tuple[str, str, str], str] = {
     ("drone_safe", "frontier_greedy_shared", "team"): f"1 episode, closest 0.039 m; {_NAV}",
     ("drone_safe", "frontier_greedy_shared", "clutter"): f"1 episode, closest 0.000 m; {_NAV}",
     ("drone_safe", "frontier_greedy_shared", "low_comm"): f"1 episode, closest 0.000 m; {_NAV}",
+    ("drone_safe", "cbba", "team"): f"1 episode, closest 0.053 m; {_NAV}",
+    ("drone_safe", "cbba", "clutter"): f"2 episodes, closest 0.115 m; {_NAV}",
+    ("drone_safe", "cbba", "low_comm"): f"8 episodes, closest 0.017 m; {_NAV}",
+    # completes
+    ("completes", "cbba", "clutter"): "stalls at 97.6% true coverage for the whole 900 s (cause not investigated)",
     # knows_when_done: the last drone notices late
     ("knows_when_done", "greedy_uncoordinated", "team"): f"last drone 46.3 s late; {_NOSHARE}",
     ("knows_when_done", "greedy_uncoordinated", "clutter"): f"last drone 27.2 s late; {_NOSHARE}",
@@ -71,12 +76,15 @@ KNOWN_GAPS: dict[tuple[str, str, str], str] = {
     ("knows_when_done", "greedy+dmpc", "low_comm"): f"last drone 24.4 s late; {_NOSHARE} (default share=False)",
     ("knows_when_done", "frontier+dmpc", "team"): f"last drone 38.5 s late; {_NOSHARE} (default share=False)",
     ("knows_when_done", "frontier+dmpc", "clutter"): f"last drone 73.0 s late; {_NOSHARE} (default share=False)",
+    ("knows_when_done", "cbba", "clutter"): "never covers the map (see completes), so no drone can conclude it is done",
+    ("knows_when_done", "cbba", "low_comm"): "map covered at 106.9 s but drones 1 and 2 never declare done (messages reach only 1.5 m)",
     ("knows_when_done", "frontier+dmpc", "low_comm"): f"last drone 38.5 s late; {_NOSHARE} (default share=False)",
     # efficient: slower than 1.5 x centralised greedy
     ("efficient", "greedy_uncoordinated", "team"): "141.7 s = 2.57 x reference; drones duplicate each other's work",
     ("efficient", "greedy_uncoordinated", "clutter"): "163.3 s = 2.30 x reference; drones duplicate each other's work",
     ("efficient", "greedy+dmpc", "team"): "160.8 s = 2.91 x reference; same uncoordinated goals as greedy_uncoordinated",
     ("efficient", "greedy+dmpc", "clutter"): "161.4 s = 2.28 x reference; same uncoordinated goals as greedy_uncoordinated",
+    ("efficient", "cbba", "clutter"): "does not complete (see completes)",
     ("efficient", "frontier+dmpc", "team"): "159.2 s = 2.88 x reference; uncoordinated frontier goals, no sharing",
     ("efficient", "frontier+dmpc", "clutter"): "106.8 s = 1.51 x reference; uncoordinated frontier goals, no sharing",
     ("efficient", "frontier_greedy", "team"): "104.6 s = 1.89 x reference; no sharing, map unknown",

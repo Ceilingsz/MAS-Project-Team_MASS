@@ -1,8 +1,10 @@
 """Experiment script: Compare Known vs. Unknown Map scenarios across MAS methods.
 
 Runs methods (B2, B3, B4, CBBA) under:
-  - Known Map   (known_map = True)
-  - Unknown Map (known_map = False)
+  - Known Map   (obstacles given)
+  - Unknown Map (SimConfig(hide_obstacles=True): obstacles withheld and learned by sensing; targets and
+                 viewpoints still given. Only CBBA re-plans on discovery; B2-B4 plan as if the space were empty.
+                 For the stricter interface that also hides targets and viewpoints, see experiment E3/E3D.)
 
 Outputs a comprehensive comparison table and saves to results/known_vs_unknown.csv.
 """
@@ -70,7 +72,7 @@ def run_experiment(maps, n_agents_list, seeds, methods, safety="none", max_time=
                                 max_time=max_time,
                                 stop_when_covered=True,
                                 safety=safety,
-                                known_map=is_known,
+                                hide_obstacles=not is_known,
                             )
                             model = get_model(model_name)
                             sim = Simulator(world, model, sc)

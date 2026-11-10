@@ -20,7 +20,7 @@ from mascov.maps.benchmarks import BENCHMARKS, make_world  # noqa: E402
 from mascov.metrics.bounds import lower_bound  # noqa: E402
 from mascov.sim.simulator import Simulator  # noqa: E402
 
-METHODS = dict(B0="greedy_single", B2="greedy_centralised", B3="greedy_uncoordinated", B4="static_partition", CBBA="cbba")
+METHODS = dict(B0="greedy_single", B2="greedy_centralised", B3="greedy_uncoordinated", B4="static_partition")
 
 
 def main():

@@ -17,10 +17,17 @@ from mascov.common.types import Command, Observation
 class CentralModel(ABC):
     name: str = "unnamed"
     centralised: bool = True
+    # Which world interface the model is written for. "known": WorldView + AgentBelief (target-indexed).
+    # "unknown": UnknownWorldView + MapBelief (lattice-indexed, obstacles learned by sensing).
+    # The Simulator checks it matches SimConfig.known_map.
+    map_interface: str = "known"
+    # Seconds between calls to step(). None: use SimConfig.decision_period. A receding-horizon controller
+    # that must re-plan every control step sets this to the simulation step (0.1 s).
+    decision_period: float | None = None
 
     @abstractmethod
     def reset(self, world, agent_ids: list[int]) -> None:
-        """world is a WorldView."""
+        """world is a WorldView (known map) or an UnknownWorldView (see map_interface)."""
 
     @abstractmethod
     def step(self, obs: dict[int, Observation]) -> dict[int, Command]:
@@ -32,6 +39,9 @@ class CentralModel(ABC):
 
 
 class AgentPolicy(ABC):
+    map_interface: str = "known"        # see CentralModel.map_interface
+    decision_period: float | None = None   # see CentralModel.decision_period
+
     @abstractmethod
     def reset(self, world, agent_id: int, n_agents: int) -> None: ...
 
@@ -47,6 +57,8 @@ class DecentralisedModel(CentralModel):
 
     def __init__(self, policy_cls: Type[AgentPolicy], name: str = "decentralised", **kwargs):
         self.policy_cls, self.kwargs, self.name = policy_cls, kwargs, name
+        self.map_interface = getattr(policy_cls, "map_interface", "known")
+        self.decision_period = getattr(policy_cls, "decision_period", None)
         self.policies: dict[int, AgentPolicy] = {}
 
     def reset(self, world, agent_ids):

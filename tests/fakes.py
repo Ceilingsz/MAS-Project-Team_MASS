@@ -48,7 +48,7 @@ class FakeWorld:
     def n_targets(self):
         return len(self.targets)
 
-    def view(self):
+    def view(self, known_map: bool = True):
         return SimpleNamespace(cfg=self.cfg)
 
 

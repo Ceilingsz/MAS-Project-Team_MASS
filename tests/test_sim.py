@@ -6,8 +6,9 @@ from mascov.common.model import CentralModel, DecentralisedModel, AgentPolicy, g
 from mascov.common.types import Command, Message, Plan
 from mascov.maps.benchmarks import make_world
 from mascov.metrics.bounds import lower_bound
-from mascov.sim.dynamics import step_double_integrator
+from mascov.sim.dynamics import step_single_integrator
 from mascov.sim.simulator import Simulator
+from mascov.sim.tracker import PlanTracker
 from mascov.world.world import World
 from models.greedy_single import GreedySingle
 
@@ -22,13 +23,33 @@ def test_plan_reference_and_polyline():
     assert np.allclose(p.ref(100)[0], [3, 4]) and np.allclose(p.ref(100)[1], 0)
 
 
-def test_double_integrator_exact_and_limits():
-    p, v = step_double_integrator(np.zeros(2), np.zeros(2), np.array([1.0, 0.0]), 1.0, 10, 10)
-    assert np.allclose(p, [0.5, 0]) and np.allclose(v, [1, 0])
-    p, v = step_double_integrator(np.zeros(2), np.zeros(2), np.array([50.0, 0.0]), 1.0, 10, 2.0)
-    assert np.allclose(v, [2, 0])                                 # acceleration clipped to a_max
-    p, v = step_double_integrator(np.zeros(2), np.array([5.0, 0]), np.array([2.0, 0.0]), 1.0, 1.0, 2.0)
-    assert np.linalg.norm(v) <= 1.0 + 1e-12                       # speed clipped to v_max
+def test_single_integrator_exact_and_limits():
+    p, v = step_single_integrator(np.zeros(2), np.array([0.5, 0.0]), 1.0, 1.0)
+    assert np.allclose(p, [0.5, 0]) and np.allclose(v, [0.5, 0])
+    p, v = step_single_integrator(np.zeros(2), np.array([5.0, 0.0]), 0.1, 1.0)
+    assert np.allclose(v, [1, 0]) and np.allclose(p, [0.1, 0])      # speed clipped to v_max
+    p, v = step_single_integrator(np.array([1.0, 1.0]), np.zeros(2), 0.1, 1.0)
+    assert np.allclose(p, [1, 1]) and np.allclose(v, 0)             # zero command: stays put, stops instantly
+
+
+def test_tracker_follows_a_plan_closely_and_settles_at_its_end():
+    tr = PlanTracker(3.0, 1.0)
+    plan = Plan.from_polyline([[0, 0], [3, 0], [3, 4]], t0=0.0, speed=0.6)
+    pos, t, dt, worst = np.zeros(2), 0.0, 0.1, 0.0
+    while t < plan.t_end + 5.0:
+        v, err = tr.velocity(t, pos, plan, plan.end_point)
+        pos, _ = step_single_integrator(pos, v, dt, 1.0)
+        worst, t = max(worst, err), t + dt
+    # velocity feedforward leaves no steady lag; the only error is at a corner that falls between two control steps,
+    # where the old velocity is held for at most one step: <= plan speed * dt * sqrt(2) = 0.085 m here
+    assert worst <= 0.6 * dt * np.sqrt(2) + 1e-9
+    assert np.linalg.norm(pos - plan.end_point) < 1e-3
+
+
+def test_tracker_respects_the_speed_limit():
+    tr = PlanTracker(3.0, 1.0)
+    v, err = tr.velocity(0.0, np.zeros(2), None, np.array([10.0, 0.0]))     # far-away hold point
+    assert np.linalg.norm(v) == pytest.approx(1.0) and err == pytest.approx(10.0)
 
 
 def test_registry():
