@@ -30,6 +30,7 @@ The suite has two layers that answer different questions.
 | `test_baselines.py` | greedy viewpoint choice, the shared `Navigator` (shortest path at planning speed, arrival within `sense_slack`, replanning, blocked goals, and that it has no drone-drone logic), the static partition, per-model contracts (e.g. "sends no messages") |
 | `test_safety.py` | the BVC filter: never leaves its cell, forced collisions happen without it and not with it, it makes a colliding model collision-free |
 | `test_greedy_explorer.py`, `test_geodesic_partition.py` | the two unknown-map explorers: spot choice (gain against travel time, random tie-breaking), geodesic Voronoi ownership (ties, walls), obstacle discovery with and without the map, belief and position messages and their range, end-to-end runs |
+| `test_cbba_explorer.py` | CBBA / CBAA on the unknown-map interface: runner does not skip them on unknown maps, every drone finishes and knows it, CBAA holds one task, disjoint bundles, stale claims released, obstacles learned by sensing, belief sharing and message range |
 | `test_cbba.py`, `test_cbba_rigorous.py` | CBBA consensus (higher bid wins, tie-breaking, cascade drops, stale messages), bundle scoring, the hidden-obstacle `WorldView`, CBBA end-to-end runs |
 | `test_dmpc.py` | the D-MPC QP (speed limit, walls, obstacles, neighbour separation), coupling on vs off in forced crossings, solver never fails |
 
@@ -79,6 +80,8 @@ python -m pytest -q tests/test_model_quality.py --runxfail   # every gap as a pl
 | `cbba` | **fail**: clutter (pass: solo, team, low_comm) | pass | **fail**: team, clutter, low_comm | pass | **fail**: clutter, low_comm (pass: solo, team) | **fail**: clutter (pass: solo, team) | pass | pass |
 | `greedy_explorer` | pass | pass | **fail**: team, clutter, low_comm | pass | **fail**: team, clutter, low_comm (pass: solo) | **fail**: team (pass: solo, clutter) | pass | pass |
 | `geodesic_partition` | pass | pass | **fail**: team, clutter, low_comm | pass | **fail**: team, clutter, low_comm (pass: solo) | **fail**: team (pass: solo, clutter) | pass | pass |
+| `cbba_explorer` | pass | pass | **fail**: team, clutter, low_comm | pass | pass | pass | pass | pass |
+| `cbaa_explorer` | pass | pass | **fail**: team, low_comm (pass: clutter) | pass | pass | pass | pass | pass |
 | `frontier_greedy` | pass | pass | **fail**: team, clutter, low_comm | pass | **fail**: team, clutter, low_comm (pass: solo) | **fail**: team, clutter (pass: solo) | pass | pass |
 | `frontier_greedy_shared` | pass | pass | **fail**: team, clutter, low_comm | pass | pass | **fail**: team, clutter (pass: solo) | pass | pass |
 
@@ -90,6 +93,9 @@ What it says:
   `greedy_uncoordinated`, and its 3-drone team is barely faster than one drone (0.91 x).
 * **On an unknown map, splitting the space pays:** `geodesic_partition` beats `greedy_explorer` with 3 drones (85.7 s vs
   96.7 s on `rooms_and_door`, 82.1 s vs 100.7 s on `clutter`); both collide and, without sharing, notice 68-94 s late that they are done.
+* **On an unknown map, CBBA with shared beliefs is the fastest decentralised method** (`cbba_explorer`, 3 drones: 72.8 s on
+  `rooms_and_door`, 1.32 x the reference; CBAA 77.1 s) and every drone knows it is done within 2 s; like the other
+  Navigator-based models it still collides.
 * **CBBA splits the work best among the decentralised methods** (3 drones 75.7 s = 1.37 x the reference; 0.37 x its
   own one-drone time) but collides (Navigator), stalls at 97.6% on `clutter`, and with messages limited to 1.5 m two of three
   drones never conclude they are done.
@@ -129,7 +135,7 @@ src/mascov/
 models/        one folder per algorithm: greedy_single (B0), greedy_centralised (B2),
                greedy_uncoordinated (B3), static_partition (B4),
                frontier_greedy, frontier_greedy_shared (unknown-map explorers),
-               cbba (CBBA task allocation),
+               cbba (CBBA task allocation, known map), cbba_explorer / cbaa_explorer (CBBA / CBAA, unknown map),
                greedy_explorer, geodesic_partition (unknown-map explorers: greedy, geodesic Voronoi split),
                greedy_dmpc (greedy+dmpc, frontier+dmpc: D-MPC trajectories)
                `import models` registers them all (the D-MPC models only if OSQP is installed)
@@ -266,6 +272,44 @@ past known obstacles) per second of travel through known free space, unknown spa
   columns (one figure per combination); `scripts/plot_coverage_curves.py` draws coverage-over-time curves.
 * **Runner change:** a model whose factory takes `seed` now gets the job's seed (it used to run with its default, 0, on every
   seed). Experiments run before this change (for example E3D above) can therefore give slightly different numbers when re-run.
+
+## CBBA and CBAA on an unknown map (`models/cbba/explorer.py`)
+
+`cbba` (below) is written for the known-map interface, so the experiment runner skips it whenever `map_prior="unknown"`.
+`cbba_explorer` is CBBA on the unknown-map interface (`map_interface = "unknown"`), and `cbaa_explorer` is its
+single-assignment case CBAA (`max_bundle_size=1`). With `map_prior="known"` the runner gives the same code the obstacles at
+the start (`reveal_obstacles_at_start=True`), so known vs unknown is a paired comparison of one algorithm.
+
+* **Tasks** are the candidate standing positions. A drone bids (UNKNOWN cells the spot would reveal, minus those its earlier
+  bundle spots reveal) / (travel time from the previous bundle spot or from where it is + `delta`), with line of sight past the
+  obstacles it knows and travel through known free space (unknown space treated as free), as in `greedy_explorer`.
+* **Consensus** is `cbba_core.CBBAState`, unchanged. One policy per drone: a drone uses only its own observation and the
+  messages it hears within `r_comm` (unlike `cbba`, which reads other drones' state).
+* **Two fixes the known-map version does not have.** (1) *Stale claims:* the simplified consensus rules could leave every drone
+  believing someone else owned a task nobody held (three drones idle forever beside one unseen cell). Each message now carries the
+  sender's bundle, and a drone forgets a claim when the claimed winner's last report does not include the task or it has not been
+  heard for `claim_ttl` s (3 s). (2) *Parked drones:* spots beside a stationary drone are skipped only while there is other work,
+  otherwise a drone waited forever beside a spot a finished teammate was parked on. With both: 0 problems in 80 runs (5 maps x
+  N = 2, 4 x 2 seeds x sharing on/off; every run fully covered, every drone declared done, no obstacle contact).
+* **`share=True` is the default** (like `cbba`'s `share_coverage`): beliefs travel with the consensus message. Without it a drone
+  keeps bidding on space teammates have already seen: 3 drones took 144 s on `rooms_and_door` vs 72.8 s with sharing.
+* Options: `share`, `max_bundle_size` (CBBA only), `delta`, `claim_ttl`, `seed`.
+
+**Experiments with only CBBA and CBAA** (each with and without shared beliefs; `definitions.py`):
+
+| experiment | varies | runs (10 seeds) |
+|---|---|---|
+| `CBBA_PRIOR` | map known / unknown x team size 2, 4, 6, 8 | 960 |
+| `CBBA_COMM` | message range 1.5, 3, 6 m, unlimited x team size 4, 8 (map unknown) | 960 |
+| `CBBA_BUNDLE` | bundle size 1 (= CBAA), 2, 4, 8 x team size 4, 8 (map unknown, shared beliefs) | 240 |
+
+```bash
+python scripts/run_experiments.py CBBA_PRIOR CBBA_COMM CBBA_BUNDLE --quick --jobs 8    # smoke run (72 short runs)
+python scripts/run_experiments.py CBBA_PRIOR CBBA_COMM CBBA_BUNDLE --jobs 8            # full run; resumes if interrupted
+python scripts/plot_experiments.py CBBA_PRIOR CBBA_COMM CBBA_BUNDLE                    # results/<exp>/figures/*.png
+```
+
+CBBA (shared and private) has also been added to the explorer comparisons `PRIOR`, `COMM`, `ABL` and `ABLP`.
 
 ## CBBA task allocation (`models/cbba`)
 
