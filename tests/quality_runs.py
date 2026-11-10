@@ -44,6 +44,8 @@ MODELS: dict[str, ModelInfo] = {m.name: m for m in [
     ModelInfo("cbba"),
     ModelInfo("greedy_explorer", interface="unknown"),
     ModelInfo("geodesic_partition", interface="unknown"),
+    ModelInfo("cbba_explorer", interface="unknown"),
+    ModelInfo("cbaa_explorer", interface="unknown"),
     ModelInfo("frontier_greedy", interface="unknown"),
     ModelInfo("frontier_greedy_shared", interface="unknown"),
 ]}

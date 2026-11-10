@@ -177,12 +177,17 @@ GREEDY_EXP = ModelSpec("Greedy explorer", "greedy_explorer")
 GREEDY_EXP_SHARED = ModelSpec("Greedy explorer (shared beliefs)", "greedy_explorer", dict(share=True))
 PARTITION_EXP = ModelSpec("Geodesic partition", "geodesic_partition")
 PARTITION_EXP_SHARED = ModelSpec("Geodesic partition (shared beliefs)", "geodesic_partition", dict(share=True))
+# CBBA / CBAA on the unknown-map interface (models/cbba/explorer.py); CBAA = CBBA with a bundle of one task
+CBBA_EXP = ModelSpec("CBBA", "cbba_explorer", dict(share=False))
+CBBA_EXP_SHARED = ModelSpec("CBBA (shared beliefs)", "cbba_explorer", dict(share=True))
+CBAA_EXP = ModelSpec("CBAA", "cbaa_explorer", dict(share=False))
+CBAA_EXP_SHARED = ModelSpec("CBAA (shared beliefs)", "cbaa_explorer", dict(share=True))
 
 EXP_MAPS = ["sparse", "rooms_and_door", "cluttered"]
 
 _add(Experiment(
     "PRIOR", "Value of the map prior", "How much does knowing the map give us?",
-    models=[GREEDY_EXP, GREEDY_EXP_SHARED, PARTITION_EXP, PARTITION_EXP_SHARED],
+    models=[GREEDY_EXP, GREEDY_EXP_SHARED, PARTITION_EXP, PARTITION_EXP_SHARED, CBBA_EXP, CBBA_EXP_SHARED],
     maps=EXP_MAPS, n_agents=[4], levers={"map_prior": ["known", "unknown"]},
     plots=[PlotSpec("sweep", "prior_t95", "Map prior: time to 95%", x="map_prior", y="t95"),
            PlotSpec("paired", "prior_cost", "Unknown against known map", y="t95",
@@ -193,7 +198,7 @@ _add(Experiment(
 
 _add(Experiment(
     "COMM", "Communication radius", "How much communication does belief sharing need?",
-    models=[GREEDY_EXP_SHARED, PARTITION_EXP, PARTITION_EXP_SHARED,
+    models=[GREEDY_EXP_SHARED, PARTITION_EXP, PARTITION_EXP_SHARED, CBBA_EXP, CBBA_EXP_SHARED,
             ModelSpec("Greedy explorer (no messages)", "greedy_explorer", role="reference", ignores=("world.r_comm",))],
     maps=EXP_MAPS, n_agents=[6], map_prior="unknown", levers={"world.r_comm": [2.0, 4.0, 6.0, 8.0, 12.0, math.inf]},
     plots=[PlotSpec("sweep", "comm_t95", "Communication radius: time to 95%", x="world_r_comm", y="t95"),
@@ -202,7 +207,7 @@ _add(Experiment(
     quick=dict(maps=["rooms_and_door"], seeds=[0, 1])))
 
 # Team size x communication radius (unknown map).
-ABL_MODELS = [PARTITION_EXP, PARTITION_EXP_SHARED, GREEDY_EXP_SHARED,
+ABL_MODELS = [PARTITION_EXP, PARTITION_EXP_SHARED, GREEDY_EXP_SHARED, CBBA_EXP_SHARED,
               ModelSpec("Greedy explorer (no messages)", "greedy_explorer", role="reference", ignores=("world.r_comm",))]
 R_LEVELS = [1.5, 3.0, 6.0, math.inf]
 
@@ -217,10 +222,52 @@ _add(Experiment(
 # Map prior x team size x radius: does the partition use the map better than greedy?
 _add(Experiment(
     "ABLP", "Map prior x team size x radius", "Does the partition use the map better than greedy, across team sizes and radii?",
-    models=[PARTITION_EXP_SHARED, GREEDY_EXP_SHARED], maps=EXP_MAPS, n_agents=[2, 4, 6, 8],
+    models=[PARTITION_EXP_SHARED, GREEDY_EXP_SHARED, CBBA_EXP_SHARED], maps=EXP_MAPS, n_agents=[2, 4, 6, 8],
     levers={"map_prior": ["known", "unknown"], "world.r_comm": [3.0, math.inf]},
     plots=[PlotSpec("paired", "ablp_prior_cost", "Unknown against known map", y="t95",
                     options=dict(pairs=[("unknown", "known")], label_col="map_prior",
                                  match=("label", "map", "n_agents", "seed")), per=["map"]),
            PlotSpec("sweep", "ablp_t95", "Time to 95%", x="world_r_comm", y="t95")],
     quick=dict(maps=["rooms_and_door"], n_agents=[2, 4], seeds=[0, 1])))
+
+# ================================================================================================
+# CBBA family only (CBBA and its single-assignment case CBAA), unknown-map interface
+# ================================================================================================
+CBBA_FAMILY = [CBBA_EXP, CBBA_EXP_SHARED, CBAA_EXP, CBAA_EXP_SHARED]
+
+_add(Experiment(
+    "CBBA_PRIOR", "CBBA / CBAA: map prior x team size", "What does not knowing the map cost CBBA and CBAA, at each team size?",
+    models=CBBA_FAMILY, maps=EXP_MAPS, n_agents=[2, 4, 6, 8], levers={"map_prior": ["known", "unknown"]},
+    plots=[PlotSpec("paired", "cbba_prior_cost", "CBBA / CBAA: unknown against known map", y="t95",
+                    options=dict(pairs=[("unknown", "known")], label_col="map_prior",
+                                 match=("label", "map", "n_agents", "seed")), per=None),
+           PlotSpec("sweep", "cbba_prior_t95", "CBBA / CBAA: time to 95% by team size", x="n_agents", y="t95",
+                    where={"map_prior": "unknown"}),
+           PlotSpec("sweep", "cbba_prior_collisions", "CBBA / CBAA: collisions by team size", x="n_agents", y="collisions",
+                    where={"map_prior": "unknown"}),
+           PlotSpec("curves", "cbba_prior_coverage", "CBBA / CBAA: coverage over time (4 drones, map unknown)",
+                    where={"map_prior": "unknown", "n_agents": 4})],
+    quick=dict(maps=["rooms_and_door"], n_agents=[2, 4], seeds=[0, 1])))
+
+_add(Experiment(
+    "CBBA_COMM", "CBBA / CBAA: communication radius", "How much communication do CBBA and CBAA need on an unknown map?",
+    models=CBBA_FAMILY, maps=EXP_MAPS, n_agents=[4, 8], map_prior="unknown",
+    levers={"world.r_comm": [1.5, 3.0, 6.0, INF]},
+    world={"r_neighbor": INF},                      # neighbour sensing stays unlimited: only message reach changes
+    plots=[PlotSpec("sweep", "cbba_comm_t95", "CBBA / CBAA: time to 95% by radius", x="world_r_comm", y="t95"),
+           PlotSpec("sweep", "cbba_comm_t100", "CBBA / CBAA: time to 100% by radius", x="world_r_comm", y="t100"),
+           PlotSpec("sweep", "cbba_comm_msgs", "CBBA / CBAA: messages by radius", x="world_r_comm", y="msgs_per_drone_per_s"),
+           PlotSpec("sweep", "cbba_comm_visits", "CBBA / CBAA: visits per target by radius", x="world_r_comm", y="mean_visits")],
+    quick=dict(maps=["rooms_and_door"], n_agents=[4], seeds=[0, 1])))
+
+_add(Experiment(
+    "CBBA_BUNDLE", "CBBA bundle size (1 = CBAA)", "How long should each drone's bundle be? Bundle 1 is CBAA.",
+    models=[ModelSpec("CBBA (shared beliefs)", "cbba_explorer", dict(share=True))],
+    maps=EXP_MAPS, n_agents=[4, 8], map_prior="unknown", levers={"model.max_bundle_size": [1, 2, 4, 8]},
+    plots=[PlotSpec("sweep", "cbba_bundle_t95", "Bundle size: time to 95%", x="model_max_bundle_size", y="t95"),
+           PlotSpec("sweep", "cbba_bundle_t100", "Bundle size: time to 100%", x="model_max_bundle_size", y="t100"),
+           PlotSpec("sweep", "cbba_bundle_path", "Bundle size: path length per drone", x="model_max_bundle_size",
+                    y="path_len_mean"),
+           PlotSpec("sweep", "cbba_bundle_solve", "Bundle size: compute per decision", x="model_max_bundle_size",
+                    y="solve_ms")],
+    quick=dict(maps=["rooms_and_door"], n_agents=[4], seeds=[0, 1])))
