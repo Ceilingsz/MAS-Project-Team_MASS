@@ -45,7 +45,7 @@ def is_convex(poly: Polygon, tol: float = 1e-9) -> bool:
 def halfspaces(poly: Polygon) -> tuple[np.ndarray, np.ndarray]:
     """H-representation of a convex polygon: {x : H @ x <= b}. Rows are unit outward normals.
 
-    This is the form the STL layer's polytope predicates need.
+    The D-MPC layer (planning/dmpc.py) builds its obstacle constraints from this form.
     """
     if not is_convex(poly):
         raise ValueError("halfspaces() needs a convex polygon; decompose it first")

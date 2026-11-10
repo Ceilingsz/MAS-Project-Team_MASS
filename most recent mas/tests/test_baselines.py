@@ -1,3 +1,6 @@
+"""Baseline building blocks and per-model contracts: greedy viewpoint choice, the shared Navigator, the static
+partition. Whole-run quality (completion, safety, speed, knowing when done) is graded for every model with one
+bar in tests/test_model_quality.py, not here."""
 import numpy as np
 import pytest
 
@@ -7,9 +10,10 @@ from mascov.common.model import get_model, registered_models
 from mascov.common.types import Plan
 from mascov.maps.benchmarks import make_world
 from mascov.planning.greedy import choose_viewpoint
-from mascov.planning.navigator import Navigator, Neighbor, plan_positions
+from mascov.planning.navigator import Navigator, Neighbor
 from mascov.sim.simulator import Simulator
 from models.static_partition.partition import assign_regions, partition_targets
+
 
 MULTI = ["greedy_centralised", "greedy_uncoordinated", "static_partition"]
 
@@ -22,33 +26,12 @@ def test_all_baselines_registered():
     assert {"greedy_single", *MULTI} <= set(registered_models())
 
 
-@pytest.mark.parametrize("model", MULTI)
-@pytest.mark.parametrize("map_name,n", [("empty", 3), ("rooms_and_door", 3), ("corridor", 2)])
-def test_multi_drone_baselines_complete_without_collisions(model, map_name, n):
-    w = make_world(map_name, n_agents=n, seed=0)
-    r = run(model, w)
-    assert r.completed, (model, map_name)
-    assert r.collision_events == 0, (model, map_name, r.min_pair_dist)
-    assert r.min_pair_dist >= w.cfg.d_safe - 1e-9
-    assert r.min_clearance >= w.cfg.drone_radius
-
-
 def test_single_drone_centralised_completes_and_is_not_slower_than_b0():
     w = make_world("sparse", n_agents=1, seed=1)
     b0 = run("greedy_single", w, max_time=1500)
     b2 = run("greedy_centralised", w, max_time=1500)
     assert b0.completed and b2.completed
     assert b2.coverage_time <= b0.coverage_time * 1.05      # B2 drops claims that were seen en route
-
-
-def test_coordination_beats_no_coordination_and_more_drones_help():
-    w1 = make_world("empty", n_agents=1)
-    w3 = make_world("empty", n_agents=3)
-    t1 = run("greedy_centralised", w1, max_time=1500).coverage_time
-    b2 = run("greedy_centralised", w3).coverage_time
-    b3 = run("greedy_uncoordinated", w3).coverage_time
-    assert b2 < t1 * 0.6                                     # three coordinated drones are much faster than one
-    assert b2 < b3                                           # and faster than three that do not share
 
 
 def test_uncoordinated_sends_no_messages_and_believes_done_only_after_the_truth():
@@ -58,13 +41,6 @@ def test_uncoordinated_sends_no_messages_and_believes_done_only_after_the_truth(
     assert all(b is not None for b in r.believed_done)
     # a belief is a subset of the truth, so no agent can believe it is done before the world is covered
     assert min(r.believed_done) >= r.coverage_time - 1e-6
-
-
-def test_centralised_and_partition_finish_close_to_the_truth():
-    w = make_world("empty", n_agents=3)
-    for name in ("greedy_centralised", "static_partition"):
-        r = run(name, w, stop_when_covered=False, max_time=900)
-        assert max(r.believed_done) - r.coverage_time < 15.0, name
 
 
 def test_partition_is_a_balanced_disjoint_cover_of_the_coverable_targets():
@@ -115,39 +91,75 @@ def _nav(world, **kw):
     return Navigator(world.cfg, world.planner, world.viewpoints.positions, **kw)
 
 
-def test_navigator_reroutes_around_a_stationary_neighbor():
-    w = make_world("empty", n_agents=1)
+def test_navigator_flies_the_shortest_path_at_planning_speed():
+    w = make_world("rooms_and_door", n_agents=1)
     nav = _nav(w)
-    nav.set_goal([10.0, 3.0])
-    blocker = Neighbor(1, np.array([6.0, 3.0]), np.zeros(2), higher=True)
-    plan = nav.update(0.0, np.array([2.0, 3.0]), np.zeros(2), True, [blocker])
-    assert plan is not None
-    pts = plan_positions(plan, np.linspace(plan.t_start, plan.t_end, 200))
-    assert np.linalg.norm(pts - blocker.pos, axis=1).min() >= nav.static_dist - 1e-6
-    assert np.allclose(pts[-1], [10.0, 3.0], atol=1e-6)      # still reaches the goal
-
-
-def test_navigator_yields_to_higher_priority_head_on_traffic_and_resumes():
-    w = make_world("empty", n_agents=1)
-    nav = _nav(w)
-    nav.set_goal([10.0, 3.0])
-    me, vel = np.array([5.0, 3.0]), np.array([0.6, 0.0])
-    plan = nav.update(0.0, me, vel, True, [])                # free road: just go
+    start, goal = np.array([1.0, 1.0]), np.array([10.0, 10.0])
+    nav.set_goal(goal)
+    plan = nav.update(0.0, start, np.zeros(2), True)
     assert nav.mode == "go" and plan is not None
-    oncoming = Neighbor(0, np.array([8.0, 3.0]), np.array([-0.6, 0.0]), higher=True)
-    nav.update(0.5, me + vel * 0.5, vel, False, [oncoming])
-    assert nav.mode == "wait" and nav.stats["yields"] == 1   # collision course -> yield
-    far = Neighbor(0, np.array([8.0, 9.0]), np.array([-0.6, 0.0]), higher=True)
-    nav.update(1.0, me + vel * 0.5, np.zeros(2), True, [far])
-    assert nav.mode == "go"                                   # clear again -> resume
+    assert np.allclose(plan.p[0], start) and np.allclose(plan.end_point, goal)
+    assert plan.length == pytest.approx(w.planner.distance(start, goal), rel=1e-6)
+    assert plan.t_end == pytest.approx(plan.length / w.cfg.plan_speed, rel=1e-6)
+    assert nav.update(0.5, start, np.zeros(2), False) is None         # a valid plan is kept, not recomputed
 
 
-def test_navigator_is_not_blind_to_a_lower_priority_neighbor_directly_ahead():
+def test_navigator_arrives_within_tolerance_and_holds():
+    w = make_world("empty", n_agents=1)
+    nav = _nav(w)
+    goal = np.array([6.0, 6.0])
+    nav.set_goal(goal)
+    nav.update(0.0, np.array([2.0, 2.0]), np.zeros(2), True)
+    assert not nav.arrived
+    near = goal + [nav.arrival_tolerance * 1.5, 0.0]                  # just outside the tolerance
+    nav.update(1.0, near, np.zeros(2), True)
+    assert not nav.arrived and nav.mode == "go"                       # finished short of the goal: replans
+    inside = goal + [nav.arrival_tolerance * 0.5, 0.0]
+    plan = nav.update(2.0, inside, np.zeros(2), False)
+    assert nav.arrived and nav.mode == "arrived" and np.allclose(plan.end_point, inside)
+
+
+def test_navigator_arrival_tolerance_is_within_the_viewpoint_sensing_slack():
+    """A viewpoint 'sees' a target if it is within R_s - sense_slack. Stopping further than sense_slack from
+    the viewpoint can leave its edge targets unseen (0.25 m once left 0.17% of rooms_and_door uncovered)."""
+    w = make_world("empty", n_agents=1)
+    assert _nav(w).arrival_tolerance <= w.cfg.sense_slack + 1e-12
+
+
+def test_navigator_replans_from_where_the_drone_is_when_a_plan_ends_short():
     w = make_world("empty", n_agents=1)
     nav = _nav(w)
     nav.set_goal([10.0, 3.0])
-    me, vel = np.array([5.0, 3.0]), np.array([0.6, 0.0])
-    nav.update(0.0, me, vel, True, [])
-    braking = Neighbor(5, np.array([5.9, 3.0]), np.array([0.15, 0.0]), higher=False)   # lower priority, slowing
-    nav.update(0.5, me, vel, False, [braking])
-    assert nav.mode == "wait"
+    nav.update(0.0, np.array([2.0, 3.0]), np.zeros(2), True)
+    here = np.array([5.0, 4.0])                                       # knocked off the path, plan over
+    plan = nav.update(20.0, here, np.zeros(2), True)
+    assert plan is not None and np.allclose(plan.p[0], here) and plan.t_start == pytest.approx(20.0)
+
+
+def test_navigator_holds_on_an_unreachable_goal_and_when_the_goal_is_cleared():
+    from mascov.geometry.pathing import PathPlanner
+    from mascov.geometry.polygons import rect
+    w = make_world("empty", n_agents=1)
+    split = PathPlanner(rect(0, 0, 12, 12).difference(rect(5, -1, 7, 13)))   # a wall with no door
+    nav = Navigator(w.cfg, split, w.viewpoints.positions)
+    nav.set_goal([10.0, 6.0])
+    here = np.array([2.0, 6.0])
+    plan = nav.update(0.0, here, np.zeros(2), True)
+    assert nav.mode == "blocked" and nav.stats["blocked_goals"] == 1
+    assert len(plan.p) == 1 and np.allclose(plan.p[0], here)
+    nav.set_goal(None)
+    plan = nav.update(1.0, here, np.zeros(2), False)
+    assert nav.mode == "idle" and len(plan.p) == 1 and np.allclose(plan.p[0], here)
+
+
+def test_navigator_has_no_drone_drone_logic():
+    """Documents the contract: neighbours do not change the route. Drone-drone safety must come from a
+    safety layer (SimConfig(safety="bvc")) or a trajectory planner (greedy+dmpc, frontier+dmpc). If avoidance is
+    added to the navigator again, replace this test with tests of that behaviour."""
+    w = make_world("empty", n_agents=1)
+    plans = []
+    for nbrs in ([], [Neighbor(1, np.array([6.0, 3.0]), np.zeros(2), higher=True)]):
+        nav = _nav(w)
+        nav.set_goal([10.0, 3.0])
+        plans.append(nav.update(0.0, np.array([2.0, 3.0]), np.zeros(2), True, nbrs))
+    assert np.allclose(plans[0].p, plans[1].p) and np.allclose(plans[0].t, plans[1].t)

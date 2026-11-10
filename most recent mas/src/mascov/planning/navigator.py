@@ -49,7 +49,7 @@ class Navigator:
         max_candidates: int = 25,
         sidestep_radius: float = 5.0,
         seed: int = 0,
-        arrival_tolerance: float = 0.25,
+        arrival_tolerance: float = 0.1,
     ):
         self.cfg = cfg
         self.planner = planner
