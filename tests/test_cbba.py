@@ -101,13 +101,13 @@ def test_cbba_simulation_sparse_known():
 
     assert res.completed
     assert res.coverage_time is not None
-    assert res.collision_events == 0
+    assert res.obstacle_events == 0  # drone-drone safety is graded in test_model_quality.py: the shared Navigator has no avoidance
 
 
 def test_cbba_simulation_sparse_unknown():
     world = make_world("sparse", n_agents=2, size=12.0, seed=0)
     model = get_model("cbba", delta=1.0, max_bundle_size=4)
-    sc = SimConfig(max_time=300.0, stop_when_covered=True, safety="none", known_map=False)
+    sc = SimConfig(max_time=300.0, stop_when_covered=True, safety="none", hide_obstacles=True)
 
     sim = Simulator(world, model, sc)
     res = sim.run()

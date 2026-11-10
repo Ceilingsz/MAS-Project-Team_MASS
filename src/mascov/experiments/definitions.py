@@ -1,11 +1,11 @@
 """The experiments of the study plan, as data. Run them with scripts/run_experiments.py, draw them with
 scripts/plot_experiments.py.
 
-Models that are not implemented yet (CBBA, D-MPC, C-ADMM, the integrated method) are listed under the names the
+Models that are not implemented yet (greedy+cadmm, cbba+dmpc, cbba+cadmm, coverage_mpc) are listed under the names the
 team agreed on; the runner skips them (and says so in skipped.txt) until a model with that name is registered
 with ``mascov.common.model.register``. No file here needs to change when a model arrives. Expected names and options:
 
-    cbba                    CBBA allocation, plain tracker            kwargs: share (unknown map: share beliefs)
+    cbba                    CBBA allocation (models/cbba), Navigator  kwargs: share_coverage, max_bundle_size, delta
     greedy+dmpc             greedy goals + D-MPC                      kwargs: coupling (bool), horizon
     greedy+cadmm            greedy goals + C-ADMM                     kwargs: horizon, iterations
     cbba+dmpc, cbba+cadmm   CBBA allocation + the planner above
@@ -35,8 +35,8 @@ PARTITION = ModelSpec("Static partition", "static_partition", role="reference")
 CENTRAL = ModelSpec("Centralised greedy", "greedy_centralised", role="reference")
 FRONTIER = ModelSpec("Frontier greedy", "frontier_greedy")
 FRONTIER_SHARED = ModelSpec("Frontier greedy (shared)", "frontier_greedy_shared")
-CBBA_PRIVATE = ModelSpec("CBBA (private belief)", "cbba", dict(share=False))
-CBBA_SHARED = ModelSpec("CBBA (shared belief)", "cbba", dict(share=True))
+CBBA_PRIVATE = ModelSpec("CBBA (private belief)", "cbba", dict(share_coverage=False))
+CBBA_SHARED = ModelSpec("CBBA (shared belief)", "cbba", dict(share_coverage=True))
 
 MAPS = ["sparse", "rooms_and_door"]
 FULL_GRID = [GREEDY, CBBA, DMPC_OFF, DMPC, CADMM, CBBA_DMPC, CBBA_CADMM]

@@ -16,8 +16,7 @@ def base_starts(n: int, cfg: WorldConfig, corner=(1.0, 1.0), spacing: float = 0.
                 per_row: int = 3) -> np.ndarray:
     """Drones start together near a base in the lower-left, in a short row/grid.
 
-    The joint STL planner keeps reference paths 2(eps + r_b) apart in a conservative 1-norm, so it needs a
-    larger spacing (about 2.0 m with per_row=2); the heuristic baselines work with the default 0.8 m.
+    The default 0.8 m suits every model; the quality suite uses 2.0 m with per_row=2 (see tests/quality_runs.py).
     """
     return np.array([[corner[0] + (k % per_row) * spacing, corner[1] + (k // per_row) * spacing]
                      for k in range(n)])

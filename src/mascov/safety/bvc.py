@@ -1,20 +1,22 @@
-"""Buffered-Voronoi-cell safety filter on STOPPING positions (decentralised, control rate).
+"""Buffered-Voronoi-cell safety filter for single-integrator drones (decentralised, control rate).
 
-Each drone i looks at neighbours j it can sense (position + velocity) and, for each, builds the
-perpendicular bisector between the two drones' *stopping points*
+Drone i looks at each neighbour j it can sense (position only) and builds the perpendicular bisector of
+the segment p_i p_j, shifted towards i by half the minimum separation, d_safe / 2 (plus a small buffer).
+Drone i may only apply a velocity whose NEXT position p_i + v dt stays on its own side of every such line.
+If every drone obeys the same rule, two drones are always on opposite sides of a line that is at least
+d_safe apart, so they can never come closer than d_safe.
 
-    s = p + v |v| / (2 a_b)          (where the drone would stop if it braked at a_b < a_max)
+Why this is exact for a single integrator: a drone stops instantly, so "zero velocity" is always
+admissible while all neighbours are currently at least d_safe + 2 * buffer away. There is no braking
+distance to account for (the double-integrator version needed stopping points for that reason).
 
-shifted back by the buffer r_s = d_safe / 2. Drone i may only apply accelerations whose NEXT stopping
-point stays on its own side of every such line. Why stopping points and not positions: a plain
-position BVC can be infeasible once two drones are already closing (cannot brake in time). Braking
-exactly at a_b along -v leaves the stopping point unchanged, so "brake" is always an admissible action
-as long as everyone obeys the same rule (this is the recursive-feasibility argument; it is exact along
-the line joining two drones and approximate when the line rotates).
+The filter picks the admissible velocity closest to the one the tracker asked for, from a finite candidate
+set: the request itself, its projection onto each neighbour's half-space, zero, and a polar grid. If
+nothing is admissible it picks the least-violating candidate.
 
-The filter picks the admissible acceleration closest to the one the tracker asked for, from a finite
-candidate set (the desired acceleration, zero, braking, and a polar grid). If nothing is admissible it
-picks the least-violating candidate.
+Sensing requirement: a neighbour must be sensed before it can get within d_safe in one control step, i.e.
+neighbor_radius >= d_safe + 2 * v_max * dt (+ buffer), where neighbor_radius is WorldConfig.r_neighbor
+(or r_comm when r_neighbor is None).
 
 This is the SAFETY part of the proposal's Layer 2. It is not the C-ADMM trajectory optimisation, and it
 handles drone-drone avoidance only (no obstacles).
@@ -29,47 +31,35 @@ _GRID = np.concatenate([[[0.0, 0.0]],
                         np.c_[np.outer(_MAGS, np.cos(_ANGLES)).ravel(), np.outer(_MAGS, np.sin(_ANGLES)).ravel()]])
 
 
-def stopping_point(p: np.ndarray, v: np.ndarray, a_brake: float) -> np.ndarray:
-    speed = np.linalg.norm(v, axis=-1, keepdims=True)
-    return p + v * speed / (2.0 * a_brake)
-
-
-def bvc_filter(pos: np.ndarray, vel: np.ndarray, a_des: np.ndarray, nbr_pos: np.ndarray,
-               nbr_vel: np.ndarray, *, dt: float, a_max: float, d_safe: float,
-               brake_frac: float = 0.7, buffer_extra: float = 0.02) -> tuple[np.ndarray, bool]:
-    """Return (safe acceleration, was_modified)."""
-    a_des = np.asarray(a_des, dtype=float)
+def bvc_filter(pos: np.ndarray, v_des: np.ndarray, nbr_pos: np.ndarray, *, dt: float, v_max: float,
+               d_safe: float, buffer_extra: float = 0.02) -> tuple[np.ndarray, bool]:
+    """Return (safe velocity, was_modified)."""
+    v_des = np.asarray(v_des, dtype=float)
+    s = float(np.linalg.norm(v_des))
+    if s > v_max:
+        v_des = v_des * (v_max / s)
     if len(nbr_pos) == 0:
-        return a_des, False
-    a_b = brake_frac * a_max
-    s_i = stopping_point(pos, vel, a_b)
-    s_j = stopping_point(nbr_pos, nbr_vel, a_b)
-    d = s_j - s_i
+        return v_des, False
+    d = nbr_pos - pos
     dist = np.linalg.norm(d, axis=1)
-    fallback = nbr_pos - pos                                   # degenerate: stopping points coincide
-    d = np.where(dist[:, None] < 1e-9, fallback, d)
-    n = d / np.maximum(np.linalg.norm(d, axis=1, keepdims=True), 1e-12)
-    mid = 0.5 * (s_i + s_j)
-    c = np.einsum("kd,kd->k", n, mid) - (0.5 * d_safe + buffer_extra)       # require n . s_next <= c
+    n = d / np.maximum(dist, 1e-12)[:, None]                  # unit vectors towards each neighbour
+    c = 0.5 * dist - (0.5 * d_safe + buffer_extra)            # require n . (v dt) <= c for every neighbour
 
-    speed = np.linalg.norm(vel)
-    brake = -vel / speed * a_b if speed > 1e-9 else np.zeros(2)
-    cand = np.vstack([a_des[None], _GRID * a_max, brake[None]])
+    excess = (n @ v_des) * dt - c                             # > 0: the request enters that neighbour's buffer
+    proj = v_des[None] - (np.maximum(excess, 0.0) / dt)[:, None] * n
+    cand = np.vstack([v_des[None], proj, _GRID * v_max])
     norms = np.linalg.norm(cand, axis=1)
-    over = norms > a_max
-    cand[over] *= (a_max / norms[over])[:, None]
+    over = norms > v_max
+    cand[over] *= (v_max / norms[over])[:, None]
 
-    p_next = pos + vel * dt + 0.5 * cand * dt * dt
-    v_next = vel + cand * dt
-    s_next = stopping_point(p_next, v_next, a_b)
-    g = s_next @ n.T - c[None, :]                                # (C, K): <= 0 means admissible
+    g = (cand @ n.T) * dt - c[None, :]                        # (C, K): <= 0 means admissible
     worst = g.max(axis=1)
-    ok = worst <= 0.0
+    ok = worst <= 1e-12
     if ok[0]:
-        return a_des, False
+        return v_des, False
     if ok.any():
         idx = np.flatnonzero(ok)
-        best = idx[np.argmin(np.linalg.norm(cand[idx] - a_des, axis=1))]
+        best = idx[np.argmin(np.linalg.norm(cand[idx] - v_des, axis=1))]
     else:
         best = int(np.argmin(worst))
     return cand[best].copy(), True

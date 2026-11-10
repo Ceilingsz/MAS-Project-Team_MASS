@@ -6,7 +6,7 @@ from typing import Any, Optional, Sequence
 
 import numpy as np
 
-from mascov.world.belief import AgentBelief
+from mascov.world.belief import AgentBelief, MapBelief
 
 
 class Plan:
@@ -90,11 +90,14 @@ class Observation:
     agent_id: int
     pos: np.ndarray
     vel: np.ndarray
-    belief: AgentBelief                         # the agent's own memory (it may merge into it)
-    newly_covered: np.ndarray                   # target ids this agent saw since the last decision
+    belief: "AgentBelief | MapBelief"           # the agent's own memory (it may merge into it)
+    newly_covered: np.ndarray                   # ids this agent saw since the last decision: target ids (known map)
+                                                # or lattice cell ids (unknown map)
     new_obstacles: list[int]                    # obstacle ids this agent discovered since the last decision
-    neighbors: dict[int, np.ndarray]            # id -> position, agents within communication range
+    neighbors: dict[int, np.ndarray]            # id -> position, agents within the neighbour-sensing radius
     inbox: list[Message]
     plan_finished: bool                         # tracker is at the end of the plan (or has none)
     plan_time_left: float                       # seconds until the current plan ends (0 if none)
     neighbor_vels: dict[int, np.ndarray] = field(default_factory=dict)   # id -> velocity (relative-state sensing)
+    comm_neighbors: list[int] = field(default_factory=list)              # ids within the COMMUNICATION radius r_comm
+                                                                         # (``neighbors`` uses the sensing radius r_neighbor)
