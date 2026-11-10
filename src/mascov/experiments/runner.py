@@ -60,18 +60,22 @@ def run_job(job: Job, world_builder=None) -> tuple[dict, dict | None]:
     """Run one job. Returns (row, curve); on an error the row has status='error' and the curve is None."""
     _ensure_registered()
     from mascov.common.config import SimConfig, WorldConfig
-    from mascov.common.model import get_model
+    import inspect
+    from mascov.common.model import _REGISTRY, get_model
     from mascov.sim.simulator import Simulator
     if world_builder is None:
         from mascov.maps.benchmarks import make_world as world_builder
 
-    row = dict(job_id=job.job_id, exp=job.exp, label=job.label, model=job.model, role=job.role, map=job.map,
+    # Build row with lever columns first so a lever named "map_prior" doesn't collide with the fixed column
+    row = {lever_column(k): v for k, v in job.levers.items()}
+    row.update(job_id=job.job_id, exp=job.exp, label=job.label, model=job.model, role=job.role, map=job.map,
                n_agents=job.n_agents, seed=job.seed, map_prior=job.map_prior)
-    # lever columns after the fixed ones: a "map_prior" lever has the same column name (and the same value)
-    row.update({lever_column(k): v for k, v in job.levers.items()})
     t0 = time.perf_counter()
     try:
-        model = get_model(job.model, **job.kwargs)
+        kwargs = dict(job.kwargs)
+        if "seed" not in kwargs and job.model in _REGISTRY and "seed" in inspect.signature(_REGISTRY[job.model]).parameters:
+            kwargs["seed"] = job.seed
+        model = get_model(job.model, **kwargs)
         iface = getattr(model, "map_interface", "known")
         cfg = WorldConfig().with_(**job.world)
         world = world_builder(job.map, n_agents=job.n_agents, size=job.size, seed=job.seed, cfg=cfg)

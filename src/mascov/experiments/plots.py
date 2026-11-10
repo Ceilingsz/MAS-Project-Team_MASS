@@ -12,10 +12,17 @@ Kinds (see ``PlotSpec``):
   curves    mean true coverage against time per label (x, y ignored; options: horizon)
   paired    paired relative difference of ``y`` between pairs of labels (options: pairs=[(a, b), ...])
   tradeoff  mean of metric x against mean of metric y per label (e.g. time against collisions), with intervals
+  lines     y against lever x with one line per value of the column options["group"] (e.g. team size), one shade of a
+            single hue per group value; rows whose x is None (levers a model ignores) are left out
+  heat      mean of y on a grid: lever column x across, options["rows"] (default n_agents) down, values printed
+  ratio_heat  the same grid for the relative difference (a - b) / b in % of metric y between labels
+            options["a"] and options["b"], matched on map, seed, team size and x (b may ignore x: a flat reference)
+``per`` may be one column or a list of columns: one figure per combination of their values.
 """
 from __future__ import annotations
 
 import math
+import re
 from pathlib import Path
 
 import matplotlib
@@ -186,29 +193,155 @@ def _tradeoff(rows, spec, colors, out):
     return _finish(fig, ax, spec.title, nice(spec.x), nice(spec.y), out)
 
 
+RAMP = ["#bcd7f5", "#7fb0ea", "#2a78d6", "#154c91"]          # one hue, light to dark (group values in order)
+
+
+def _num(v):
+    return math.inf if v is None else v
+
+
+def _lines(rows, spec, colors, out):
+    group = spec.options.get("group", "n_agents")
+    rows = [r for r in rows if r.get(spec.x) is not None]
+    if not rows:
+        return None
+    pos, ticks = _xpos([r.get(spec.x) for r in rows])
+    gvals = sorted({r.get(group) for r in rows}, key=lambda v: (not isinstance(v, (int, float)), v if isinstance(v, (int, float)) else str(v)))
+    ramp = [RAMP[round(i * (len(RAMP) - 1) / max(1, len(gvals) - 1))] for i in range(len(gvals))]
+    fig, ax = _axes()
+    for gv, col in zip(gvals, ramp):
+        g = an.group_stats([r for r in rows if r.get(group) == gv], [spec.x], spec.y)
+        g = sorted(g, key=lambda e: pos[e[spec.x]])
+        xs, ys = [pos[e[spec.x]] for e in g], [e["mean"] for e in g]
+        half = [0 if math.isnan(e["ci"]) else e["ci"] for e in g]
+        ax.plot(xs, ys, color=col, lw=2, marker="o", ms=5, markeredgecolor=SURFACE, markeredgewidth=1,
+                label=f"{nice(group)}: {gv}")
+        ax.fill_between(xs, np.subtract(ys, half), np.add(ys, half), color=col, alpha=0.12, lw=0)
+    ax.set_xticks(list(ticks)), ax.set_xticklabels(list(ticks.values())), ax.set_ylim(bottom=0)
+    return _finish(fig, ax, spec.title, nice(spec.x), nice(spec.y), out)
+
+
+def _heat_axes(figsize=(6.2, 4.2)):
+    fig, ax = plt.subplots(figsize=figsize, dpi=160)
+    fig.patch.set_facecolor(SURFACE), ax.set_facecolor(SURFACE)
+    for s in ("top", "right", "left", "bottom"):
+        ax.spines[s].set_visible(False)
+    ax.tick_params(colors=MUTED, labelsize=9, length=0)
+    return fig, ax
+
+
+def _grid(rows, xcol, rcol, cell):
+    xs = sorted({r.get(xcol) for r in rows}, key=_num)
+    ys = sorted({r.get(rcol) for r in rows}, key=_num)
+    z = np.full((len(ys), len(xs)), np.nan)
+    for i, yv in enumerate(ys):
+        for j, xv in enumerate(xs):
+            z[i, j] = cell([r for r in rows if r.get(rcol) == yv and r.get(xcol) == xv])
+    return xs, ys, z
+
+
+def _draw_grid(fig, ax, xs, ys, z, spec, cmap, vmin, vmax, fmt, cbar_label, out, rcol, subtitle=""):
+    from matplotlib.colors import LinearSegmentedColormap  # noqa: E402
+    im = ax.imshow(z, cmap=cmap, vmin=vmin, vmax=vmax, aspect="auto", origin="lower")
+    ax.set_xticks(range(len(xs))), ax.set_xticklabels(["inf" if _num(v) == math.inf else f"{v:g}" for v in xs])
+    ax.set_yticks(range(len(ys))), ax.set_yticklabels([str(v) for v in ys])
+    for i in range(len(ys)):
+        for j in range(len(xs)):
+            if np.isfinite(z[i, j]):
+                r, g, b, _ = im.cmap(im.norm(z[i, j]))
+                dark = 0.299 * r + 0.587 * g + 0.114 * b < 0.5
+                ax.text(j, i, fmt(z[i, j]), ha="center", va="center", fontsize=9, color="#ffffff" if dark else INK)
+    cb = fig.colorbar(im, ax=ax, fraction=0.05, pad=0.03)
+    cb.ax.tick_params(colors=MUTED, labelsize=8), cb.outline.set_visible(False)
+    cb.set_label(cbar_label, color=SECONDARY, fontsize=9)
+    ax.set_title(spec.title, loc="left", fontsize=11, color=INK, fontweight="bold")
+    if subtitle:
+        import textwrap
+        ax.text(0, 1.015, "\n".join(textwrap.wrap(subtitle, 70)), transform=ax.transAxes, fontsize=8.5, color=MUTED,
+                va="bottom", ha="left")
+        ax.set_title(spec.title, loc="left", fontsize=11, color=INK, fontweight="bold", pad=26)
+    ax.set_xlabel(nice(spec.x), color=SECONDARY, fontsize=9.5), ax.set_ylabel(nice(rcol), color=SECONDARY, fontsize=9.5)
+    fig.tight_layout()
+    Path(out).parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, facecolor=SURFACE)
+    plt.close(fig)
+    return out
+
+
+def _heat(rows, spec, colors, out):
+    from matplotlib.colors import LinearSegmentedColormap  # noqa: E402
+    rcol = spec.options.get("rows", "n_agents")
+    xs, ys, z = _grid(rows, spec.x, rcol, lambda rs: np.mean([an.value(r, spec.y) for r in rs]) if rs else np.nan)
+    cmap = LinearSegmentedColormap.from_list("seq", ["#bcd7f5", "#2a78d6", "#154c91"])
+    return _draw_grid(*_heat_axes(), xs, ys, z, spec, cmap, np.nanmin(z), np.nanmax(z),
+                      lambda v: f"{v:.1f}", nice(spec.y), out, rcol)
+
+
+def _ratio_heat(rows, spec, colors, out):
+    from matplotlib.colors import LinearSegmentedColormap  # noqa: E402
+    a, b = spec.options["a"], spec.options["b"]
+    rcol = spec.options.get("rows", "n_agents")
+    match = ("map", "n_agents", "seed")
+    xs, ys, _ = _grid(rows, spec.x, rcol, lambda rs: 0)
+    z = np.full((len(ys), len(xs)), np.nan)
+    for i, yv in enumerate(ys):
+        for j, xv in enumerate(xs):
+            ra = {tuple(r[k] for k in match): an.value(r, spec.y) for r in rows
+                  if r["label"] == a and r.get(spec.x) == xv and r.get(rcol) == yv}
+            rb = {tuple(r[k] for k in match): an.value(r, spec.y) for r in rows
+                  if r["label"] == b and (r.get(spec.x) == xv or r.get(spec.x) is None) and r.get(rcol) == yv}
+            pairs = [(ra[k], rb[k]) for k in ra if k in rb and rb[k] and ra[k]]
+            if pairs:
+                z[i, j] = 100 * (np.mean([va / vb for va, vb in pairs]) - 1)
+    cmap = LinearSegmentedColormap.from_list("div", ["#2a78d6", "#f1f0ea", "#eb6834"])
+    mx = max(abs(np.nanmin(z)), abs(np.nanmax(z)), 1)
+    return _draw_grid(*_heat_axes(), xs, ys, z, spec, cmap, -mx, mx,
+                      lambda v: f"{v:+.0f}%", nice(spec.y) + ": relative difference [%]", out, rcol,
+                      subtitle=f"blue: '{a}' is faster than '{b}'")
+
+
 def make_figures(spec, rows, curves, out_dir) -> list[str]:
     """Draw one PlotSpec: one file per value of ``spec.per`` (or one file). Returns the written paths."""
     rows = an.ok_rows(rows, spec.where)
     if not rows:
         return []
     colors = Colors(rows)
-    parts = sorted({r.get(spec.per) for r in rows}, key=str) if spec.per else [None]
+    per_cols = [spec.per] if isinstance(spec.per, str) else (spec.per or [])
+    if per_cols:
+        parts = sorted({tuple(r.get(c) for c in per_cols) for r in rows}, key=lambda t: tuple(str(v) for v in t))
+    else:
+        parts = [None]
     written = []
     for part in parts:
-        rs = [r for r in rows if spec.per is None or r.get(spec.per) == part]
-        s = type(spec)(**{**spec.__dict__, "title": spec.title + (f" ({part})" if part is not None else "")})
-        stem = f"{spec.file}" + (f"_{part}" if part is not None else "")
+        if part is not None:
+            rs = [r for r in rows if all(r.get(c) == v for c, v in zip(per_cols, part))]
+            suffix = "_".join(re.sub(r"[^\w]+", "_", str(v)).strip("_") for v in part)
+            title_suffix = ", ".join(str(v) for v in part)
+        else:
+            rs = rows
+            suffix, title_suffix = "", ""
+        s = type(spec)(**{**spec.__dict__, "title": spec.title + (f" ({title_suffix})" if title_suffix else "")})
+        stem = f"{spec.file}" + (f"_{suffix}" if suffix else "")
         out = Path(out_dir) / f"{stem}.png"
+        fig = None
         if spec.kind == "sweep":
-            written.append(_sweep(rs, s, colors, out))
+            fig = _sweep(rs, s, colors, out)
         elif spec.kind == "rate":
-            written.append(_sweep(rs, s, colors, out, rate=True))
+            fig = _sweep(rs, s, colors, out, rate=True)
         elif spec.kind == "curves":
-            written.append(_curves(rs, curves, s, colors, out))
+            fig = _curves(rs, curves, s, colors, out)
         elif spec.kind == "paired":
-            written.append(_paired(rs, s, colors, out))
+            fig = _paired(rs, s, colors, out)
         elif spec.kind == "tradeoff":
-            written.append(_tradeoff(rs, s, colors, out))
+            fig = _tradeoff(rs, s, colors, out)
+        elif spec.kind == "lines":
+            fig = _lines(rs, s, colors, out)
+        elif spec.kind == "heat":
+            fig = _heat(rs, s, colors, out)
+        elif spec.kind == "ratio_heat":
+            fig = _ratio_heat(rs, s, colors, out)
         else:
             raise ValueError(f"unknown plot kind '{spec.kind}'")
+        if fig is not None:
+            written.append(fig)
     return written

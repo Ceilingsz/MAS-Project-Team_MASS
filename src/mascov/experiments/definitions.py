@@ -168,3 +168,59 @@ _add(Experiment(
            PlotSpec("sweep", "e3d_collisions", "D-MPC: collisions by map prior", x="map_prior", y="collisions"),
            PlotSpec("curves", "e3d_coverage", "D-MPC: coverage over time, map unknown", where={"map_prior": "unknown"})],
     quick=dict(maps=["rooms_and_door"], n_agents=[2], seeds=[0])))
+
+# ================================================================================================
+# Greedy explorer + geodesic partition experiments (unknown-map interface models)
+# ================================================================================================
+
+GREEDY_EXP = ModelSpec("Greedy explorer", "greedy_explorer")
+GREEDY_EXP_SHARED = ModelSpec("Greedy explorer (shared beliefs)", "greedy_explorer", dict(share=True))
+PARTITION_EXP = ModelSpec("Geodesic partition", "geodesic_partition")
+PARTITION_EXP_SHARED = ModelSpec("Geodesic partition (shared beliefs)", "geodesic_partition", dict(share=True))
+
+EXP_MAPS = ["sparse", "rooms_and_door", "cluttered"]
+
+_add(Experiment(
+    "PRIOR", "Value of the map prior", "How much does knowing the map give us?",
+    models=[GREEDY_EXP, GREEDY_EXP_SHARED, PARTITION_EXP, PARTITION_EXP_SHARED],
+    maps=EXP_MAPS, n_agents=[4], levers={"map_prior": ["known", "unknown"]},
+    plots=[PlotSpec("sweep", "prior_t95", "Map prior: time to 95%", x="map_prior", y="t95"),
+           PlotSpec("paired", "prior_cost", "Unknown against known map", y="t95",
+                    options=dict(pairs=[("unknown", "known")], label_col="map_prior",
+                                 match=("label", "map", "n_agents", "seed")), per=None),
+           PlotSpec("curves", "prior_coverage", "Coverage over time", where={"map_prior": "unknown"})],
+    quick=dict(maps=["rooms_and_door"], seeds=[0, 1])))
+
+_add(Experiment(
+    "COMM", "Communication radius", "How much communication does belief sharing need?",
+    models=[GREEDY_EXP_SHARED, PARTITION_EXP, PARTITION_EXP_SHARED,
+            ModelSpec("Greedy explorer (no messages)", "greedy_explorer", role="reference", ignores=("world.r_comm",))],
+    maps=EXP_MAPS, n_agents=[6], map_prior="unknown", levers={"world.r_comm": [2.0, 4.0, 6.0, 8.0, 12.0, math.inf]},
+    plots=[PlotSpec("sweep", "comm_t95", "Communication radius: time to 95%", x="world_r_comm", y="t95"),
+           PlotSpec("sweep", "comm_msgs", "Communication radius: messages", x="world_r_comm", y="msgs_per_drone_per_s"),
+           PlotSpec("sweep", "comm_visits", "Communication radius: visits per target", x="world_r_comm", y="mean_visits")],
+    quick=dict(maps=["rooms_and_door"], seeds=[0, 1])))
+
+# Team size x communication radius (unknown map).
+ABL_MODELS = [PARTITION_EXP, PARTITION_EXP_SHARED, GREEDY_EXP_SHARED,
+              ModelSpec("Greedy explorer (no messages)", "greedy_explorer", role="reference", ignores=("world.r_comm",))]
+R_LEVELS = [1.5, 3.0, 6.0, math.inf]
+
+_add(Experiment(
+    "ABL", "Team size x communication radius", "How do team size and communication radius change each method?",
+    models=ABL_MODELS, maps=EXP_MAPS, n_agents=[2, 4, 6, 8], map_prior="unknown", levers={"world.r_comm": R_LEVELS},
+    plots=[PlotSpec("sweep", "abl_t95", "Time to 95% by radius", x="world_r_comm", y="t95"),
+           PlotSpec("sweep", "abl_collisions", "Collisions by radius", x="world_r_comm", y="collisions"),
+           PlotSpec("sweep", "abl_msgs", "Messages by radius", x="world_r_comm", y="msgs_per_drone_per_s")],
+    quick=dict(maps=["rooms_and_door"], n_agents=[2, 4], seeds=[0, 1])))
+
+# Map prior x team size x radius: does the partition use the map better than greedy?
+_add(Experiment(
+    "ABLP", "Map prior x team size x radius", "Does the partition use the map better than greedy, across team sizes and radii?",
+    models=[PARTITION_EXP_SHARED, GREEDY_EXP_SHARED], maps=EXP_MAPS, n_agents=[2, 4, 6, 8],
+    levers={"map_prior": ["known", "unknown"], "world.r_comm": [3.0, math.inf]},
+    plots=[PlotSpec("paired", "ablp_prior_cost", "Unknown against known map", y="t95",
+                    options=dict(pairs=[("unknown", "known")], label_col="map_prior",
+                                 match=("label", "map", "n_agents", "seed")), per=["map"]),
+           PlotSpec("sweep", "ablp_t95", "Time to 95%", x="world_r_comm", y="t95")],
+    quick=dict(maps=["rooms_and_door"], n_agents=[2, 4], seeds=[0, 1])))

@@ -29,6 +29,7 @@ The suite has two layers that answer different questions.
 | `test_framework.py` | metrics (visits, milestones, collision episodes), separate sensing and message ranges, negotiation rounds, experiment runner and plots |
 | `test_baselines.py` | greedy viewpoint choice, the shared `Navigator` (shortest path at planning speed, arrival within `sense_slack`, replanning, blocked goals, and that it has no drone-drone logic), the static partition, per-model contracts (e.g. "sends no messages") |
 | `test_safety.py` | the BVC filter: never leaves its cell, forced collisions happen without it and not with it, it makes a colliding model collision-free |
+| `test_greedy_explorer.py`, `test_geodesic_partition.py` | the two unknown-map explorers: spot choice (gain against travel time, random tie-breaking), geodesic Voronoi ownership (ties, walls), obstacle discovery with and without the map, belief and position messages and their range, end-to-end runs |
 | `test_cbba.py`, `test_cbba_rigorous.py` | CBBA consensus (higher bid wins, tie-breaking, cascade drops, stale messages), bundle scoring, the hidden-obstacle `WorldView`, CBBA end-to-end runs |
 | `test_dmpc.py` | the D-MPC QP (speed limit, walls, obstacles, neighbour separation), coupling on vs off in forced crossings, solver never fails |
 
@@ -76,6 +77,8 @@ python -m pytest -q tests/test_model_quality.py --runxfail   # every gap as a pl
 | `greedy+dmpc` | pass | pass | pass | pass | **fail**: team, clutter, low_comm (pass: solo) | **fail**: team, clutter (pass: solo) | **fail**: team | pass |
 | `frontier+dmpc` | pass | pass | pass | pass | **fail**: team, clutter, low_comm (pass: solo) | **fail**: team, clutter (pass: solo) | **fail**: team | pass |
 | `cbba` | **fail**: clutter (pass: solo, team, low_comm) | pass | **fail**: team, clutter, low_comm | pass | **fail**: clutter, low_comm (pass: solo, team) | **fail**: clutter (pass: solo, team) | pass | pass |
+| `greedy_explorer` | pass | pass | **fail**: team, clutter, low_comm | pass | **fail**: team, clutter, low_comm (pass: solo) | **fail**: team (pass: solo, clutter) | pass | pass |
+| `geodesic_partition` | pass | pass | **fail**: team, clutter, low_comm | pass | **fail**: team, clutter, low_comm (pass: solo) | **fail**: team (pass: solo, clutter) | pass | pass |
 | `frontier_greedy` | pass | pass | **fail**: team, clutter, low_comm | pass | **fail**: team, clutter, low_comm (pass: solo) | **fail**: team, clutter (pass: solo) | pass | pass |
 | `frontier_greedy_shared` | pass | pass | **fail**: team, clutter, low_comm | pass | pass | **fail**: team, clutter (pass: solo) | pass | pass |
 
@@ -85,6 +88,8 @@ What it says:
 * **Coordination decides speed.** Only the models that split the work (`greedy_centralised`, `static_partition`) are within
   1.5 x of the reference with 3 drones; `greedy+dmpc` uses the uncoordinated greedy goals, so it is safe but no faster than
   `greedy_uncoordinated`, and its 3-drone team is barely faster than one drone (0.91 x).
+* **On an unknown map, splitting the space pays:** `geodesic_partition` beats `greedy_explorer` with 3 drones (85.7 s vs
+  96.7 s on `rooms_and_door`, 82.1 s vs 100.7 s on `clutter`); both collide and, without sharing, notice 68-94 s late that they are done.
 * **CBBA splits the work best among the decentralised methods** (3 drones 75.7 s = 1.37 x the reference; 0.37 x its
   own one-drone time) but collides (Navigator), stalls at 97.6% on `clutter`, and with messages limited to 1.5 m two of three
   drones never conclude they are done.
@@ -125,6 +130,7 @@ models/        one folder per algorithm: greedy_single (B0), greedy_centralised 
                greedy_uncoordinated (B3), static_partition (B4),
                frontier_greedy, frontier_greedy_shared (unknown-map explorers),
                cbba (CBBA task allocation),
+               greedy_explorer, geodesic_partition (unknown-map explorers: greedy, geodesic Voronoi split),
                greedy_dmpc (greedy+dmpc, frontier+dmpc: D-MPC trajectories)
                `import models` registers them all (the D-MPC models only if OSQP is installed)
 tests/  scripts/  configs/  experiments/  docs/
@@ -240,6 +246,26 @@ It is a **drone-drone** filter only: no obstacles, and it assumes every drone ru
   re-measured**. Re-run `python -m pytest tests/test_safety.py` and `python scripts/run_baselines.py --n 2 3 4 --safety bvc`.
 * **Not done:** this is the safety half of the proposal's Layer 2. The C-ADMM distributed-MPC trajectory generation itself is not
   implemented, nor is obstacle handling in the control layer.
+
+## Unknown-map explorers: `greedy_explorer`, `geodesic_partition`
+
+Both use the unknown-map interface (`SimConfig(known_map=False)`; add `reveal_obstacles_at_start=True` for the same code with
+the map given) and pick standing positions with `planning/spots.choose_spot`: the most UNKNOWN cells revealed (line of sight
+past known obstacles) per second of travel through known free space, unknown space treated as free.
+
+* **`greedy_explorer`** (baseline): every drone explores greedily on its own belief (`share=True`: also merges beliefs heard
+  within `r_comm`). It does not look at other drones: no collision avoidance, no goal deconfliction.
+* **`geodesic_partition`**: every decision a drone computes shortest-path (geodesic) distances, on the obstacles it knows,
+  from itself and from each teammate whose position it heard in the last `ttl` s (default 3 s), owns the spots it reaches
+  first (ties: lowest id), and explores its own cell greedily; with nothing left in its cell it helps anywhere
+  (`fallback_picks`). A committed goal is kept until reached, seen or blocked. Drones broadcast their position every decision;
+  `share=True` also sends beliefs. Unlike Euclidean Voronoi it does not hand a drone space behind a wall that a teammate
+  reaches first.
+* **Experiments** (`definitions.py`): `PRIOR` (map known vs unknown), `COMM` (communication radius), `ABL` (team size x
+  radius), `ABLP` (map prior x team size x radius). New plot kinds `lines`, `heat`, `ratio_heat`, and `per` may list several
+  columns (one figure per combination); `scripts/plot_coverage_curves.py` draws coverage-over-time curves.
+* **Runner change:** a model whose factory takes `seed` now gets the job's seed (it used to run with its default, 0, on every
+  seed). Experiments run before this change (for example E3D above) can therefore give slightly different numbers when re-run.
 
 ## CBBA task allocation (`models/cbba`)
 
