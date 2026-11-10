@@ -39,12 +39,12 @@ class ModelSpec:
 
 @dataclass
 class PlotSpec:
-    kind: str                                    # "sweep" | "rate" | "curves" | "paired" | "tradeoff"
+    kind: str                                    # "sweep" | "rate" | "curves" | "paired" | "tradeoff" | "lines" | "heat" | "ratio_heat"
     file: str                                    # output file stem
     title: str = ""
     x: str | None = None                         # column on the x axis (a lever column, or a metric for "tradeoff")
     y: str | None = None                         # metric on the y axis
-    per: str | None = "map"                      # one figure per value of this column (None: one figure)
+    per: str | list | None = "map"               # one figure per value of this column, or per combination of several (None: one)
     where: dict = field(default_factory=dict)    # keep only rows whose columns equal these values
     options: dict = field(default_factory=dict)  # kind-specific extras (see plots.py)
 

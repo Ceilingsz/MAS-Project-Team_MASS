@@ -5,6 +5,8 @@ greedy+dmpc / frontier+dmpc need the OSQP solver (pip install -e ".[dmpc]"), so 
 from models import greedy_single, greedy_centralised, greedy_uncoordinated, static_partition  # noqa: F401
 from models import frontier_greedy  # noqa: F401  (unknown-map interface)
 from models import cbba  # noqa: F401  (CBBA task allocation)
+from models import greedy_explorer  # noqa: F401  (unknown-map greedy baseline)
+from models import geodesic_partition  # noqa: F401  (decentralised geodesic Voronoi)
 
 try:  # optional: D-MPC needs the OSQP solver (pip install osqp)
     from mascov.planning.dmpc import dmpc_available
