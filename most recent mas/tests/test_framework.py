@@ -230,3 +230,18 @@ def test_real_world_visits_and_milestones():
     r = Simulator(w, get_model("greedy_uncoordinated"), SimConfig(max_time=900.0)).run()
     assert r.completed and r.mean_visits >= 1.0 and r.time_to_fraction(0.5) < r.time_to_fraction(0.95) <= r.coverage_time
     assert r.pair_events + r.obstacle_events == r.collision_events or r.collision_events <= r.pair_events + r.obstacle_events
+
+
+def test_a_map_prior_lever_runs():
+    """Regression: a "map_prior" lever once set the map_prior column twice, so E3 and E3D could not run at all."""
+    from dataclasses import replace
+
+    from mascov.experiments.definitions import EXPERIMENTS
+    from mascov.experiments.runner import run_job
+    from mascov.experiments.spec import expand
+    jobs = [j for j in expand(EXPERIMENTS["E3"], seeds=[0], maps=["empty"], n_agents=[1]) if j.model == "frontier_greedy"]
+    assert {j.map_prior for j in jobs} == {"known", "unknown"}
+    for j in jobs:
+        row, _ = run_job(replace(j, max_time=3.0))
+        assert row["status"] == "ok", row["error"]
+        assert row["map_prior"] == j.map_prior

@@ -40,6 +40,7 @@ MODELS: dict[str, ModelInfo] = {m.name: m for m in [
     ModelInfo("greedy_uncoordinated"),
     ModelInfo("static_partition"),
     ModelInfo("greedy+dmpc"),
+    ModelInfo("frontier+dmpc", interface="unknown"),
     ModelInfo("frontier_greedy", interface="unknown"),
     ModelInfo("frontier_greedy_shared", interface="unknown"),
     ModelInfo("stl_single", single_only=True),

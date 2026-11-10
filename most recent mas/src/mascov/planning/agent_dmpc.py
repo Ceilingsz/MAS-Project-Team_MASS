@@ -48,11 +48,10 @@ class DMPCAgentPolicy(AgentPolicy):
     def reset(self, world, agent_id: int, n_agents: int) -> None:
         self.w, self.id, self.cfg = world, agent_id, world.cfg
         c = world.cfg
-        self.vp = world.viewpoints
         self.rng = np.random.default_rng(self.seed * 1000 + agent_id)
         self.prm = DMPCParams(horizon=self.H, dt=c.dt, v_cap=0.95 * c.v_max, clearance=c.clearance,
                               d_min=c.d_safe + self.margin, width=c.width, height=c.height, **self.dmpc_kw)
-        self.obs_hs = obstacle_halfspaces(world.obstacles)
+        self._setup_map(world)
         self.visited: set[int] = set()
         self.banned: dict[int, float] = {}            # viewpoint -> time the ban ends
         self.goal_vp: int | None = None
@@ -69,7 +68,22 @@ class DMPCAgentPolicy(AgentPolicy):
         self.stuck_since: float | None = None
         self.nudges, self.detour_until, self.detour_dir = 0, -math.inf, np.zeros(2)
         self.st = dict(dmpc_solves=0, dmpc_failures=0, dmpc_slack_steps=0, dmpc_deadlock_nudges=0,
-                       dmpc_abandoned=0, dmpc_max_slack=0.0)
+                       dmpc_abandoned=0, dmpc_max_slack=0.0, belief_merged=0)
+
+    # ------------------------------------------------------------------ map hooks (overridden for unknown maps)
+    def _setup_map(self, world) -> None:
+        """Known map: goals are the viewpoints, the planner and obstacles are the true ones."""
+        self.vp = world.viewpoints
+        self.goal_pos = self.vp.positions
+        self.planner = world.planner
+        self.obs_hs = obstacle_halfspaces(world.obstacles)
+
+    def _sync_map(self, obs) -> None:
+        """Called every decision after merging messages: take in newly known obstacles (nothing to do here)."""
+
+    def _goal_useful(self, obs, v: int) -> bool:
+        """False once the goal would no longer add anything (its targets were seen en route)."""
+        return remaining_gain(self.vp, v, obs.belief.covered) > 0
 
     # ------------------------------------------------------------------ layer 1: goals
     def _static_blocked(self, obs) -> set[int]:
@@ -77,7 +91,7 @@ class DMPCAgentPolicy(AgentPolicy):
         pts = [p for j, p in obs.neighbors.items() if np.linalg.norm(obs.neighbor_vels.get(j, np.zeros(2))) < 0.1]
         if not pts:
             return set()
-        d = np.linalg.norm(self.vp.positions[:, None, :] - np.asarray(pts)[None], axis=2).min(axis=1)
+        d = np.linalg.norm(self.goal_pos[:, None, :] - np.asarray(pts)[None], axis=2).min(axis=1)
         return set(np.flatnonzero(d < self.prm.d_min + 0.1).tolist())
 
     def select_goal(self, obs) -> int | None:
@@ -90,19 +104,18 @@ class DMPCAgentPolicy(AgentPolicy):
 
     def _set_goal(self, v: int | None, obs) -> None:
         self.goal_vp = v
-        self.goal = None if v is None else self.vp.positions[v].copy()
+        self.goal = None if v is None else self.goal_pos[v].copy()
         self.path, self.path_t, self.s = None, -math.inf, 0.0
         self.stuck_since, self.check_t, self.check_p = None, obs.t, obs.pos.copy()
         self.nudges, self.detour_until = 0, -math.inf
 
     def _update_goal(self, obs) -> None:
-        covered = obs.belief.covered
         if self.goal_vp is not None:
             if np.linalg.norm(obs.pos - self.goal) <= self.arrive_tol:
                 self.visited.add(self.goal_vp)
                 self._set_goal(None, obs)
-            elif remaining_gain(self.vp, self.goal_vp, covered) == 0:
-                self._set_goal(None, obs)                       # seen en route
+            elif not self._goal_useful(obs, self.goal_vp):
+                self._set_goal(None, obs)                       # seen en route (or, unknown map, now inside an obstacle)
         if self.goal_vp is None and not self.done:
             v = self.select_goal(obs)
             if v is None:
@@ -119,7 +132,7 @@ class DMPCAgentPolicy(AgentPolicy):
             return np.repeat(np.asarray(pt, float)[None], H, axis=0)
         far = self.path is not None and (np.linalg.norm(sample_polyline(self.path, np.array([self.s]))[0] - obs.pos) > 0.5)
         if self.path is None or obs.t - self.path_t >= self.replan_every or far:
-            path = self.w.planner.path(obs.pos, self.goal)
+            path = self.planner.path(obs.pos, self.goal)
             if path is None:                                  # unreachable: drop it
                 self.visited.add(self.goal_vp)
                 self._set_goal(None, obs)
@@ -200,7 +213,8 @@ class DMPCAgentPolicy(AgentPolicy):
             if m.kind == KIND and m.sender != self.id:
                 self.heard[m.sender] = (m.payload["t"], m.payload["pts"])
                 if self.share and m.payload.get("belief") is not None:
-                    obs.belief.merge(m.payload["belief"])
+                    self.st["belief_merged"] += obs.belief.merge(m.payload["belief"])
+        self._sync_map(obs)
 
         self._update_goal(obs)
         self._progress_check(obs)

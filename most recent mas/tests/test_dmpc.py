@@ -115,3 +115,39 @@ def test_policy_never_fails_a_solve_and_broadcasts_its_prediction():
     off = Simulator(w, get_model("greedy+dmpc", coupling=False), SimConfig(max_time=5, stop_when_covered=False)).run()
     assert off.n_messages == 0                                          # the ablation sends nothing
 
+
+
+# ------------------------------------------------------------------ unknown map: frontier + D-MPC
+def _unknown(map_name, n, prior_known=False, **kw):
+    w = make_world(map_name, n_agents=n, seed=0)
+    r = Simulator(w, get_model("frontier+dmpc", **kw),
+                  SimConfig(max_time=40, stop_when_covered=False, known_map=False,
+                            reveal_obstacles_at_start=prior_known)).run()
+    return w, r
+
+
+def test_frontier_dmpc_is_an_unknown_map_model():
+    assert get_model("frontier+dmpc").map_interface == "unknown"
+    w = make_world("empty", n_agents=1)
+    with pytest.raises(ValueError):
+        Simulator(w, get_model("frontier+dmpc"), SimConfig(known_map=True)).run()
+
+
+def test_frontier_dmpc_learns_obstacles_only_by_sensing_and_stays_clear():
+    w, r = _unknown("cluttered", 2)
+    assert r.extra["map_rebuilds"] > 2                     # obstacles discovered one by one while flying
+    assert r.obstacle_events == 0 and r.min_clearance >= w.cfg.drone_radius
+    assert r.extra["dmpc_failures"] == 0
+
+
+def test_frontier_dmpc_with_the_map_given_never_rebuilds():
+    _, r = _unknown("cluttered", 2, prior_known=True)
+    assert r.extra["map_rebuilds"] == 2                    # one per drone: loading the prior, no later discovery
+
+
+def test_frontier_dmpc_shares_beliefs_only_when_asked():
+    _, private = _unknown("rooms_and_door", 2)
+    _, shared = _unknown("rooms_and_door", 2, share=True)
+    assert private.n_messages == shared.n_messages         # one prediction per drone per step either way
+    assert private.extra["belief_merged"] == 0              # predictions only: nothing to merge
+    assert shared.extra["belief_merged"] > 0                # beliefs travel with the prediction and are merged

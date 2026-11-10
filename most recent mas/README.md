@@ -77,6 +77,7 @@ python -m pytest -q --slow                            # also the very long cases
 | `greedy_uncoordinated` | pass | pass | **fail**: team, clutter, low_comm | pass | **fail**: team, clutter, low_comm (pass: solo) | **fail**: team, clutter (pass: solo) | **fail**: team | pass |
 | `static_partition` | pass | pass | **fail**: clutter (pass: team, low_comm) | pass | pass | pass | pass | pass |
 | `greedy+dmpc` | pass | pass | pass | pass | **fail**: team, clutter, low_comm (pass: solo) | **fail**: team, clutter (pass: solo) | **fail**: team | pass |
+| `frontier+dmpc` | pass | pass | pass | pass | **fail**: team, clutter, low_comm (pass: solo) | **fail**: team, clutter (pass: solo) | **fail**: team | pass |
 | `frontier_greedy` | pass | pass | **fail**: team, clutter, low_comm | pass | **fail**: team, clutter, low_comm (pass: solo) | **fail**: team, clutter (pass: solo) | pass | pass |
 | `frontier_greedy_shared` | pass | pass | **fail**: team, clutter, low_comm | pass | pass | **fail**: team, clutter (pass: solo) | pass | pass |
 | `stl_single` | pass | pass | - | pass | pass | pass | - | - |
@@ -84,7 +85,7 @@ python -m pytest -q --slow                            # also the very long cases
 
 What it says:
 * **Drone-drone safety is the main gap.** Every model built on the shared `Navigator` collided somewhere, including the
-  centralised reference on `clutter`. Only `greedy+dmpc` and `stl_team` were collision-free in every graded scenario.
+  centralised reference on `clutter`. Only the D-MPC models (`greedy+dmpc`, `frontier+dmpc`) and `stl_team` were collision-free in every graded scenario.
 * **Coordination decides speed.** Only the models that split the work (`greedy_centralised`, `static_partition`) are within
   1.5 x of the reference with 3 drones; `greedy+dmpc` uses the uncoordinated greedy goals, so it is safe but no faster than
   `greedy_uncoordinated`, and its 3-drone team is barely faster than one drone (0.91 x).
@@ -375,6 +376,37 @@ Needs `pip install -e ".[dmpc]"` (OSQP); without it `import models` omits the mo
   and merge coverage beliefs), `decision_period`, `seed`, plus any `DMPCParams` weight.
 * Compute: about 3-5 ms per solve with dense matrix assembly, so a 4-drone run takes ~1 min of wall time (greedy: ~2 s).
   `layer 1` is replaceable: subclass `DMPCAgentPolicy` and override `select_goal` (for `cbba+dmpc`).
+* **Unknown map: `frontier+dmpc`** (`planning/agent_frontier_dmpc.py`, run with `SimConfig(known_map=False)`). Goals come
+  from the frontier explorer's rule (most UNKNOWN cells revealed per second of travel, unknown space treated as free); the
+  D-MPC obstacle constraints and the reference path use only the obstacles the drone knows, rebuilt whenever it senses a new
+  one (`map_rebuilds` in `RunResult.extra`). `share=True` also sends the map belief with each prediction and merges what
+  arrives (`belief_merged`). With `reveal_obstacles_at_start=True` the same algorithm gets the map: the reference for
+  experiment `E3D` (`python scripts/run_experiments.py E3D --jobs 8`), which compares the two on 5 maps x N=2,4 x 3 seeds.
+
+### D-MPC with and without the map (experiment `E3D`)
+
+`python scripts/run_experiments.py E3D --jobs 8`, raw rows in `docs/e3d_dmpc_known_vs_unknown.csv`. 5 maps x N = 2, 4 x seeds
+0-2, each run with the map given (`map_prior=known`: obstacles loaded at the start, coverage still unknown) and not given.
+150 runs, all complete. `empty`, `corridor` and `rooms_and_door` are fixed maps on which the 3 seeds give identical runs, so the
+statistics below are over the **18 distinct** known/unknown pairs, not 30. Ratio = coverage time (100%) unknown / known.
+
+| | unknown / known (mean +- SE) | per map |
+|---|---|---|
+| `frontier+dmpc` (no sharing) | **1.051 +- 0.034** | empty 1.00, cluttered 1.00, corridor 1.05, sparse 1.08, rooms_and_door 1.17 |
+| `frontier+dmpc`, `share=True` | **1.010 +- 0.033** | empty 1.00, cluttered 1.01, corridor 0.93, rooms_and_door 0.95, sparse 1.06 |
+
+* **Not knowing the map costs D-MPC little:** about +5% without sharing (1.5 SE from zero, so not established) and nothing
+  measurable with sharing. Same pattern as the frontier greedy explorer above: coverage must visit everywhere anyway, so discovering
+  the obstacles is mostly free. The clearest cost is `rooms_and_door` without sharing (+17%, two distinct runs),
+  plausibly because a drone plans through a wall it has not seen yet and must turn back to the door (not checked run by run).
+* **Safety does not suffer from the unknown map:** 0 drone-drone and 0 obstacle episodes in all 150 runs; closest obstacle approach
+  0.44 m (limit 0.15 m), closest pair 0.35 m (limit 0.30 m); the QP never failed. With the map unknown a drone rebuilt its map
+  13.7 times per run on average.
+* **Sharing matters far more than the map:** with the map unknown, sharing beliefs cuts coverage time to 0.72 x on average
+  (0.83 x at N = 2, 0.61 x at N = 4).
+* With the map given, `frontier+dmpc` and the known-map `greedy+dmpc` are equally fast (ratio 0.99, range 0.75-1.17), so the
+  frontier goal rule is not what makes the unknown-map version cost anything.
+* Caveats: 12 x 12 m maps, N <= 4, whole-polygon obstacle reveal (an obstacle is known entirely once any part is seen).
 
 ## Unknown-map interface (`SimConfig(known_map=False)`)
 

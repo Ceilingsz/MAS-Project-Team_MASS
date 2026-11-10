@@ -66,8 +66,9 @@ def run_job(job: Job, world_builder=None) -> tuple[dict, dict | None]:
         from mascov.maps.benchmarks import make_world as world_builder
 
     row = dict(job_id=job.job_id, exp=job.exp, label=job.label, model=job.model, role=job.role, map=job.map,
-               n_agents=job.n_agents, seed=job.seed, map_prior=job.map_prior,
-               **{lever_column(k): v for k, v in job.levers.items()})
+               n_agents=job.n_agents, seed=job.seed, map_prior=job.map_prior)
+    # lever columns after the fixed ones: a "map_prior" lever has the same column name (and the same value)
+    row.update({lever_column(k): v for k, v in job.levers.items()})
     t0 = time.perf_counter()
     try:
         model = get_model(job.model, **job.kwargs)

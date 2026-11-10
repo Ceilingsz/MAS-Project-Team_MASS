@@ -70,11 +70,16 @@ KNOWN_GAPS: dict[tuple[str, str, str], str] = {
     ("knows_when_done", "greedy+dmpc", "team"): f"last drone 21.4 s late; {_NOSHARE} (default share=False)",
     ("knows_when_done", "greedy+dmpc", "clutter"): f"last drone 25.6 s late; {_NOSHARE} (default share=False)",
     ("knows_when_done", "greedy+dmpc", "low_comm"): f"last drone 24.4 s late; {_NOSHARE} (default share=False)",
+    ("knows_when_done", "frontier+dmpc", "team"): f"last drone 38.5 s late; {_NOSHARE} (default share=False)",
+    ("knows_when_done", "frontier+dmpc", "clutter"): f"last drone 73.0 s late; {_NOSHARE} (default share=False)",
+    ("knows_when_done", "frontier+dmpc", "low_comm"): f"last drone 38.5 s late; {_NOSHARE} (default share=False)",
     # efficient: slower than 1.5 x centralised greedy
     ("efficient", "greedy_uncoordinated", "team"): "141.7 s = 2.57 x reference; drones duplicate each other's work",
     ("efficient", "greedy_uncoordinated", "clutter"): "163.3 s = 2.30 x reference; drones duplicate each other's work",
     ("efficient", "greedy+dmpc", "team"): "160.8 s = 2.91 x reference; same uncoordinated goals as greedy_uncoordinated",
     ("efficient", "greedy+dmpc", "clutter"): "161.4 s = 2.28 x reference; same uncoordinated goals as greedy_uncoordinated",
+    ("efficient", "frontier+dmpc", "team"): "159.2 s = 2.88 x reference; uncoordinated frontier goals, no sharing",
+    ("efficient", "frontier+dmpc", "clutter"): "106.8 s = 1.51 x reference; uncoordinated frontier goals, no sharing",
     ("efficient", "frontier_greedy", "team"): "104.6 s = 1.89 x reference; no sharing, map unknown",
     ("efficient", "frontier_greedy", "clutter"): "118.8 s = 1.68 x reference; no sharing, map unknown",
     ("efficient", "frontier_greedy_shared", "team"): "94.7 s = 1.72 x reference; beliefs shared but no intent sharing",
@@ -82,6 +87,8 @@ KNOWN_GAPS: dict[tuple[str, str, str], str] = {
     ("efficient", "stl_team", "team"): "89.3 s = 1.62 x reference; synchronous windows make early finishers wait",
     # team_speedup: three drones barely faster than one
     ("team_speedup", "greedy_uncoordinated", "team"): "3 drones 141.7 s vs 1 drone 187.9 s = 0.75; duplicated work",
+    ("team_speedup", "frontier+dmpc", "team"): "3 drones 159.2 s vs 1 drone 165.1 s = 0.96; duplicated work (share=True "
+                                               "makes N=4 0.61 x faster in experiment E3D)",
     ("team_speedup", "greedy+dmpc", "team"): "3 drones 160.8 s vs 1 drone 177.0 s = 0.91; duplicated work (not investigated "
                                              "further: earlier, 4 drones at eps_track 0.3 took 131 s)",
 }

@@ -149,3 +149,22 @@ _add(Experiment(
     + [PlotSpec("paired", "e8_gain", "Integrated against CBBA + D-MPC", y="t95",
                 options=dict(pairs=[("Coverage MPC", "CBBA + D-MPC"), ("Coverage MPC", "CBBA + C-ADMM")]), per=None)],
     quick=dict(maps=["rooms_and_door"], n_agents=[4], seeds=[0, 1])))
+
+FRONTIER_DMPC = ModelSpec("Frontier + D-MPC", "frontier+dmpc")
+FRONTIER_DMPC_SHARED = ModelSpec("Frontier + D-MPC (shared)", "frontier+dmpc", dict(share=True))
+GREEDY_DMPC_REF = ModelSpec("Greedy + D-MPC (known-map model)", "greedy+dmpc", role="reference")
+
+_add(Experiment(
+    "E3D", "D-MPC: cost of not knowing the map",
+    "How much slower (and is it less safe) is D-MPC when drones must discover the obstacles?",
+    models=[FRONTIER_DMPC, FRONTIER_DMPC_SHARED, GREEDY_DMPC_REF],
+    maps=["empty", "sparse", "corridor", "rooms_and_door", "cluttered"], n_agents=[2, 4], seeds=[0, 1, 2],
+    levers={"map_prior": ["known", "unknown"]},          # greedy+dmpc is known-map only: its unknown jobs are skipped
+    plots=[PlotSpec("paired", "e3d_cost", "D-MPC: unknown against known map", y="t95", per=None,
+                    options=dict(pairs=[("unknown", "known")], label_col="map_prior",
+                                 match=("label", "map", "n_agents", "seed"))),
+           PlotSpec("sweep", "e3d_t95", "D-MPC: time to 95% by map prior", x="map_prior", y="t95"),
+           PlotSpec("sweep", "e3d_t100", "D-MPC: time to 100% by map prior", x="map_prior", y="t100"),
+           PlotSpec("sweep", "e3d_collisions", "D-MPC: collisions by map prior", x="map_prior", y="collisions"),
+           PlotSpec("curves", "e3d_coverage", "D-MPC: coverage over time, map unknown", where={"map_prior": "unknown"})],
+    quick=dict(maps=["rooms_and_door"], n_agents=[2], seeds=[0])))
