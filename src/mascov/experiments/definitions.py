@@ -1,14 +1,13 @@
 """The experiments of the study plan, as data. Run them with scripts/run_experiments.py, draw them with
 scripts/plot_experiments.py.
 
-Models that are not implemented yet (greedy+cadmm, cbba+dmpc, cbba+cadmm, coverage_mpc) are listed under the names the
+Models that are not implemented yet (cbba+dmpc, coverage_mpc) are listed under the names the
 team agreed on; the runner skips them (and says so in skipped.txt) until a model with that name is registered
 with ``mascov.common.model.register``. No file here needs to change when a model arrives. Expected names and options:
 
     cbba                    CBBA allocation (models/cbba), Navigator  kwargs: share_coverage, max_bundle_size, delta
     greedy+dmpc             greedy goals + D-MPC                      kwargs: coupling (bool), horizon
-    greedy+cadmm            greedy goals + C-ADMM                     kwargs: horizon, iterations
-    cbba+dmpc, cbba+cadmm   CBBA allocation + the planner above
+    cbba+dmpc               CBBA allocation + D-MPC
     coverage_mpc            integrated coverage-driven MPC            kwargs: horizon
     (optional extras)       utility_greedy, orca, ...
 
@@ -27,9 +26,7 @@ GREEDY = ModelSpec("Greedy", "greedy_uncoordinated")
 CBBA = ModelSpec("CBBA", "cbba")
 DMPC = ModelSpec("Greedy + D-MPC", "greedy+dmpc", dict(coupling=True))
 DMPC_OFF = ModelSpec("Greedy + D-MPC (coupling off)", "greedy+dmpc", dict(coupling=False))
-CADMM = ModelSpec("Greedy + C-ADMM", "greedy+cadmm")
 CBBA_DMPC = ModelSpec("CBBA + D-MPC", "cbba+dmpc", dict(coupling=True))
-CBBA_CADMM = ModelSpec("CBBA + C-ADMM", "cbba+cadmm")
 INTEGRATED = ModelSpec("Coverage MPC", "coverage_mpc")
 PARTITION = ModelSpec("Static partition", "static_partition", role="reference")
 CENTRAL = ModelSpec("Centralised greedy", "greedy_centralised", role="reference")
@@ -39,7 +36,7 @@ CBBA_PRIVATE = ModelSpec("CBBA (private belief)", "cbba", dict(share_coverage=Fa
 CBBA_SHARED = ModelSpec("CBBA (shared belief)", "cbba", dict(share_coverage=True))
 
 MAPS = ["sparse", "rooms_and_door"]
-FULL_GRID = [GREEDY, CBBA, DMPC_OFF, DMPC, CADMM, CBBA_DMPC, CBBA_CADMM]
+FULL_GRID = [GREEDY, CBBA, DMPC_OFF, DMPC, CBBA_DMPC]
 
 T95 = "t95"
 
@@ -74,7 +71,7 @@ _add(Experiment(
 
 _add(Experiment(
     "E2", "Communication radius", "How little communication is enough?",
-    models=[CBBA, DMPC, CADMM,
+    models=[CBBA, DMPC,
             ModelSpec("Greedy", "greedy_uncoordinated", ignores=("world.r_comm",)),          # sends nothing: flat line
             ModelSpec("Centralised greedy", "greedy_centralised", role="reference", ignores=("world.r_comm",))],
     maps=MAPS, n_agents=[6],
@@ -129,25 +126,18 @@ _add(Experiment(
     quick=dict(maps=["rooms_and_door"], n_agents=[4], seeds=[0, 1])))
 
 _add(Experiment(
-    "E7", "Lookahead and agreement", "How much lookahead (horizon) and agreement (ADMM iterations) are needed?",
-    models=[ModelSpec("Greedy + D-MPC", "greedy+dmpc", dict(coupling=True), ignores=("model.iterations",)),
-            ModelSpec("Greedy + C-ADMM", "greedy+cadmm")],
+    "E7", "Lookahead", "How much lookahead (D-MPC horizon) is needed?",
+    models=[ModelSpec("Greedy + D-MPC", "greedy+dmpc", dict(coupling=True))],
     maps=MAPS, n_agents=[6], levers={"model.horizon": [3, 5, 10]},
     plots=_sweeps("model_horizon", ["t95", "collisions", "solve_ms", "msgs_per_drone_per_s"], "e7_horizon", "Horizon"),
-    quick=dict(maps=["rooms_and_door"], seeds=[0, 1])))
-_add(Experiment(
-    "E7b", "ADMM iterations per step", "How many ADMM iterations per step are enough?",
-    models=[ModelSpec("Greedy + C-ADMM", "greedy+cadmm")], maps=MAPS, n_agents=[6],
-    levers={"model.iterations": [1, 3, 5, 10]},
-    plots=_sweeps("model_iterations", ["t95", "collisions", "solve_ms", "msgs_per_drone_per_s"], "e7b_iter", "ADMM iterations"),
     quick=dict(maps=["rooms_and_door"], seeds=[0, 1])))
 
 _add(Experiment(
     "E8", "Integrated against separate layers", "Does solving allocation and trajectory together beat solving them separately?",
-    models=[INTEGRATED, CBBA_DMPC, CBBA_CADMM, GREEDY], maps=MAPS, n_agents=[4, 6, 8],
+    models=[INTEGRATED, CBBA_DMPC, GREEDY], maps=MAPS, n_agents=[4, 6, 8],
     plots=_sweeps("n_agents", ["t95", "mean_visits", "msgs_per_drone_per_s"], "e8", "Integrated method")
     + [PlotSpec("paired", "e8_gain", "Integrated against CBBA + D-MPC", y="t95",
-                options=dict(pairs=[("Coverage MPC", "CBBA + D-MPC"), ("Coverage MPC", "CBBA + C-ADMM")]), per=None)],
+                options=dict(pairs=[("Coverage MPC", "CBBA + D-MPC")]), per=None)],
     quick=dict(maps=["rooms_and_door"], n_agents=[4], seeds=[0, 1])))
 
 FRONTIER_DMPC = ModelSpec("Frontier + D-MPC", "frontier+dmpc")
@@ -271,3 +261,198 @@ _add(Experiment(
            PlotSpec("sweep", "cbba_bundle_solve", "Bundle size: compute per decision", x="model_max_bundle_size",
                     y="solve_ms")],
     quick=dict(maps=["rooms_and_door"], n_agents=[4], seeds=[0, 1])))
+
+# ================================================================================================
+# Q1–Q3: Focused questions comparing ALL algorithms head-to-head
+# ================================================================================================
+
+GREEDY_S = ModelSpec("Greedy", "greedy_explorer", dict(share=True))
+GREEDY_COORD_S = ModelSpec("Greedy + goals", "greedy_explorer", dict(share=True, coordinate=True))
+GEODESIC_S = ModelSpec("Geodesic", "geodesic_partition", dict(share=True))
+CBBA_EXPL_S = ModelSpec("CBBA", "cbba_explorer", dict(share=True))
+DMPC_S = ModelSpec("D-MPC", "frontier+dmpc", dict(share=True))
+
+ALL5 = [GREEDY_S, GREEDY_COORD_S, GEODESIC_S, CBBA_EXPL_S, DMPC_S]
+ALL4 = [GREEDY_S, GEODESIC_S, CBBA_EXPL_S, DMPC_S]    # without greedy+goals
+Q_MAPS = ["sparse", "rooms_and_door", "cluttered"]
+Q_R = [1.5, 3.0, 6.0, math.inf]
+
+# ---- Q1: Does knowing the map help each algorithm? ----
+_add(Experiment(
+    "Q1_MAP", "Does knowing the map help?",
+    "For each algorithm: how much faster is coverage when obstacles are given vs discovered?",
+    models=ALL5, maps=Q_MAPS, n_agents=[4],
+    levers={"map_prior": ["known", "unknown"]},
+    plots=[PlotSpec("sweep", "q1_t95", "Time to 95% by map prior", x="map_prior", y="t95"),
+           PlotSpec("paired", "q1_cost", "Unknown against known map, per algorithm", y="t95",
+                    options=dict(pairs=[("unknown", "known")], label_col="map_prior",
+                                 match=("label", "map", "n_agents", "seed")), per=None),
+           PlotSpec("curves", "q1_coverage", "Coverage over time", where={"map_prior": "unknown"})],
+    quick=dict(maps=["rooms_and_door"], seeds=[0, 1])))
+
+# ---- Q2: How much does coordination help, and how does communication range affect it? ----
+_add(Experiment(
+    "Q2_COORD", "How much does coordination help?",
+    "All algorithms compared across team sizes and communication radii",
+    models=ALL5, maps=Q_MAPS, n_agents=[2, 4, 6, 8], map_prior="unknown",
+    levers={"world.r_comm": Q_R},
+    plots=[PlotSpec("sweep", "q2_t95_by_n", "Time to 95% by team size", x="n_agents", y="t95"),
+           PlotSpec("sweep", "q2_t95_by_r", "Time to 95% by radius", x="world_r_comm", y="t95"),
+           PlotSpec("sweep", "q2_visits", "Visits per target by team size", x="n_agents", y="mean_visits"),
+           PlotSpec("sweep", "q2_path", "Path length per drone", x="n_agents", y="path_len_mean"),
+           PlotSpec("sweep", "q2_msgs", "Messages per drone per second", x="world_r_comm", y="msgs_per_drone_per_s"),
+           PlotSpec("sweep", "q2_collisions", "Collisions by team size", x="n_agents", y="collisions"),
+           PlotSpec("curves", "q2_coverage_inf", "Coverage (unlimited radius, 6 drones)",
+                    where={"world_r_comm": math.inf, "n_agents": 6}),
+           PlotSpec("curves", "q2_coverage_short", "Coverage (radius 1.5 m, 6 drones)",
+                    where={"world_r_comm": 1.5, "n_agents": 6})],
+    quick=dict(maps=["rooms_and_door"], n_agents=[2, 4], seeds=[0, 1])))
+
+# ---- Q3: What is the price of safety? ----
+_add(Experiment(
+    "Q3_SAFETY", "What is the price of safety?",
+    "D-MPC vs the rest: collisions, separation and speed cost",
+    models=ALL5, maps=Q_MAPS, n_agents=[4, 6], map_prior="unknown",
+    plots=[PlotSpec("sweep", "q3_collisions", "Collisions by team size", x="n_agents", y="collisions"),
+           PlotSpec("sweep", "q3_t95", "Time to 95% by team size", x="n_agents", y="t95"),
+           PlotSpec("tradeoff", "q3_tradeoff", "Speed vs safety", x="t95", y="collisions", per=None),
+           PlotSpec("sweep", "q3_min_dist", "Minimum drone separation", x="n_agents", y="min_pair_dist")],
+    quick=dict(maps=["rooms_and_door"], n_agents=[4], seeds=[0, 1])))
+
+# ---- Q1B: Does map knowledge help on a *hard* map (corridors + dead ends)? ----
+_add(Experiment(
+    "Q1B_LABYRINTH", "Does the map help when corridors have dead ends?",
+    "Labyrinth map: narrow corridors with dead ends penalise optimistic (unknown) planning",
+    models=ALL5, maps=["labyrinth"], n_agents=[4],
+    levers={"map_prior": ["known", "unknown"]},
+    plots=[PlotSpec("sweep", "q1b_t95", "Time to 95%: known vs unknown (labyrinth)", x="map_prior", y="t95"),
+           PlotSpec("curves", "q1b_coverage", "Coverage over time (labyrinth)", where={}),
+           PlotSpec("sweep", "q1b_path", "Path length (labyrinth)", x="map_prior", y="path_len_mean")],
+    quick=dict(seeds=[0, 1])))
+
+
+# ================================================================================================
+# The learned goal layer (models/marl_explorer, MAPPO) against the hand-written decentralised explorers
+# ================================================================================================
+MARL = ModelSpec("MAPPO", "marl_explorer")
+MARL_DMPC = ModelSpec("MAPPO + D-MPC", "marl_explorer+dmpc", dict(share=True))
+CBBA_DMPC_S = ModelSpec("CBBA + D-MPC", "cbba_explorer+dmpc", dict(share=True))
+MARL_RIVALS = [MARL, CBBA_EXP_SHARED, CBAA_EXP_SHARED, GREEDY_COORD_S, PARTITION_EXP_SHARED]
+MARL_MAPS = ["sparse", "rooms_and_door", "cluttered", "corridor", "labyrinth"]
+# seeds 0-9: the training run never sees seeds below 1000 of the random maps (models/marl_explorer/train.py)
+
+_add(Experiment(
+    "MARL_TEAM", "MAPPO goal layer: team size", "Does the learned goal layer beat CBBA and the other explorers, at each team size?",
+    models=MARL_RIVALS, maps=MARL_MAPS, n_agents=[2, 4, 6, 8], map_prior="unknown",
+    plots=[PlotSpec("sweep", "marl_team_t100", "Time to 100% by team size", x="n_agents", y="t100"),
+           PlotSpec("sweep", "marl_team_t95", "Time to 95% by team size", x="n_agents", y="t95"),
+           PlotSpec("sweep", "marl_team_visits", "Visits per target by team size", x="n_agents", y="mean_visits"),
+           PlotSpec("paired", "marl_team_vs_cbba", "MAPPO against CBBA (shared beliefs)", y="t100", per=None,
+                    options=dict(pairs=[("MAPPO", "CBBA (shared beliefs)")])),
+           PlotSpec("curves", "marl_team_coverage", "Coverage over time (6 drones)", where={"n_agents": 6})],
+    quick=dict(maps=["rooms_and_door"], n_agents=[4], seeds=[0, 1])))
+
+_add(Experiment(
+    "MARL_COMM", "MAPPO goal layer: communication radius", "How does the learned goal layer degrade as messages get shorter?",
+    models=MARL_RIVALS, maps=["sparse", "rooms_and_door", "cluttered"], n_agents=[4, 8], map_prior="unknown",
+    levers={"world.r_comm": [1.5, 3.0, 6.0, INF]}, world={"r_neighbor": INF},
+    plots=[PlotSpec("sweep", "marl_comm_t100", "Time to 100% by radius", x="world_r_comm", y="t100"),
+           PlotSpec("sweep", "marl_comm_msgs", "Messages by radius", x="world_r_comm", y="msgs_per_drone_per_s")],
+    quick=dict(maps=["rooms_and_door"], n_agents=[4], seeds=[0, 1])))
+
+_add(Experiment(
+    "MARL_PRIOR", "MAPPO goal layer: map prior", "What does not knowing the map cost the learned goal layer?",
+    models=[MARL, CBBA_EXP_SHARED], maps=MARL_MAPS, n_agents=[4], levers={"map_prior": ["known", "unknown"]},
+    plots=[PlotSpec("paired", "marl_prior_cost", "Unknown against known map", y="t100", per=None,
+                    options=dict(pairs=[("unknown", "known")], label_col="map_prior",
+                                 match=("label", "map", "n_agents", "seed")))],
+    quick=dict(maps=["rooms_and_door"], seeds=[0, 1])))
+
+_add(Experiment(
+    "MARL_SAFE", "MAPPO goal layer: safe flying", "What do BVC and D-MPC cost the learned goal layer, and do they remove collisions?",
+    models=[MARL, MARL_DMPC, CBBA_EXP_SHARED, CBBA_DMPC_S], maps=["sparse", "rooms_and_door", "cluttered"],
+    n_agents=[4, 6], map_prior="unknown", levers={"sim.safety": ["none", "bvc"]},
+    plots=[PlotSpec("sweep", "marl_safe_collisions", "Collisions", x="sim_safety", y="collisions"),
+           PlotSpec("sweep", "marl_safe_t100", "Time to 100%", x="sim_safety", y="t100"),
+           PlotSpec("rate", "marl_safe_complete", "Safe-complete rate", x="sim_safety", y="safe_complete")],
+    quick=dict(maps=["rooms_and_door"], n_agents=[4], seeds=[0, 1])))
+
+# ================================================================================================
+# Large scale: 16-24 m procedural maps (maps/procedural.py), up to 16 drones, map unknown
+# ================================================================================================
+SCALE_MAPS = ["dense_16", "random_rooms_16", "maze_20", "warehouse_20", "dense_24", "random_rooms_24", "maze_24"]
+SCALE_PLOTS = [PlotSpec("sweep", "scale_t100", "Time to 100% by team size", x="n_agents", y="t100"),
+               PlotSpec("sweep", "scale_t95", "Time to 95% by team size", x="n_agents", y="t95"),
+               PlotSpec("sweep", "scale_collisions", "Collisions by team size", x="n_agents", y="collisions"),
+               PlotSpec("sweep", "scale_solve", "Compute per decision", x="n_agents", y="solve_ms")]
+
+_add(Experiment(
+    "SCALE", "Large worlds: the hand-written explorers", "How do the decentralised explorers scale to 16-24 m and 16 drones?",
+    models=[CBBA_EXP_SHARED, GREEDY_COORD_S, PARTITION_EXP_SHARED, FRONTIER_SHARED], maps=SCALE_MAPS,
+    n_agents=[4, 8, 16], seeds=[0, 1, 2], map_prior="unknown", sim={"max_time": 1200.0}, plots=SCALE_PLOTS,
+    quick=dict(maps=["dense_16"], n_agents=[4], seeds=[0])))
+
+_add(Experiment(
+    "MARL_SCALE", "Large worlds: the MAPPO goal layer", "The same grid as SCALE for marl_explorer (24 m was never trained on)",
+    models=[MARL], maps=SCALE_MAPS, n_agents=[4, 8, 16], seeds=[0, 1, 2], map_prior="unknown",
+    sim={"max_time": 1200.0}, plots=SCALE_PLOTS, quick=dict(maps=["dense_16"], n_agents=[4], seeds=[0])))
+
+# ================================================================================================
+# The study's large scale: 16 x 16 m, 4/8/16 drones, every algorithm of the deck (results slides, map-type tables).
+# SCALE above already ran CBBA, Greedy + goals and Geodesic on dense_16 and random_rooms_16 with these team sizes and
+# seeds; L16_A and L16_B add everything else on four 16 m map types. MAPPO waits for its final checkpoint (L16_MARL).
+# ================================================================================================
+_S = dict(share=True)
+L16_MAPS = ["dense_16", "random_rooms_16", "maze_16", "warehouse_16"]
+# The six map types the results compare at both sizes (12 m and 16 m)
+ALL6_12 = ["sparse", "cluttered", "dense_12", "random_rooms_12", "maze_12", "warehouse_12"]
+ALL6_16 = ["sparse_16", "cluttered_16"] + L16_MAPS
+L16_HAND_NEW = [ModelSpec("Greedy", "greedy_explorer", _S), ModelSpec("D-MPC", "frontier+dmpc", _S),
+                ModelSpec("Geodesic + D-MPC", "geodesic_partition+dmpc", _S),
+                ModelSpec("CBBA + D-MPC", "cbba_explorer+dmpc", _S)]
+L16_COMMON = dict(n_agents=[4, 8, 16], seeds=[0, 1, 2], map_prior="unknown", sim={"max_time": 1200.0},
+                  plots=SCALE_PLOTS, quick=dict(maps=["dense_16"], n_agents=[4], seeds=[0]))
+
+_add(Experiment("L16_A", "16 m: Greedy and the D-MPC combinations", "16 m maps, the methods SCALE did not run",
+                models=L16_HAND_NEW, maps=L16_MAPS, **L16_COMMON))
+_add(Experiment("L16_B", "16 m: CBBA, Greedy + goals, Geodesic on maze and warehouse",
+                "The SCALE methods on the two 16 m map types SCALE did not include",
+                models=[CBBA_EXP_SHARED, GREEDY_COORD_S, PARTITION_EXP_SHARED], maps=["maze_16", "warehouse_16"],
+                **L16_COMMON))
+_add(Experiment("L16_MARL", "16 m: MAPPO", "MAPPO with the Navigator and with D-MPC on the 16 m maps",
+                models=[MARL, ModelSpec("MAPPO + D-MPC", "marl_explorer+dmpc", _S)], maps=ALL6_16, **L16_COMMON))
+
+# Question 1 at 16 m: does knowing the map help on bigger, structured maps?
+for _nm, _models in (("", [ModelSpec("Greedy", "greedy_explorer", _S),
+                           ModelSpec("Greedy + goals", "greedy_explorer", dict(share=True, coordinate=True)),
+                           ModelSpec("Geodesic", "geodesic_partition", _S), ModelSpec("CBBA", "cbba_explorer", _S),
+                           ModelSpec("D-MPC", "frontier+dmpc", _S)]),
+                     ("_MARL", [ModelSpec("MAPPO", "marl_explorer", _S)])):
+    _add(Experiment(f"PRIOR_16{_nm}", "Map known vs unknown, 16 m", "Does knowing the map help? (16 m, 8 drones)",
+                    models=_models, maps=["dense_16", "random_rooms_16", "maze_16"],
+                    n_agents=[8], seeds=[0, 1], levers={"map_prior": ["known", "unknown"]}, sim={"max_time": 1200.0},
+                    plots=[PlotSpec("paired", f"prior_16{_nm.lower()}_cost", "Unknown against known map (16 m)",
+                                    y="t95", per=None, options=dict(pairs=[("unknown", "known")], label_col="map_prior",
+                                                                     match=("label", "map", "n_agents", "seed")))],
+                    quick=dict(maps=["maze_16"], seeds=[0])))
+
+
+# Same six map types at 12 m (4/8/16 drones, as at 16 m) and the two 16 m types L16_A / L16_B / SCALE did not cover.
+STUDY_HAND = [ModelSpec("Greedy", "greedy_explorer", _S), GREEDY_COORD_S, PARTITION_EXP_SHARED, CBBA_EXP_SHARED,
+              ModelSpec("D-MPC", "frontier+dmpc", _S), ModelSpec("Geodesic + D-MPC", "geodesic_partition+dmpc", _S),
+              ModelSpec("CBBA + D-MPC", "cbba_explorer+dmpc", _S)]
+_add(Experiment("L16_C", "16 m: every hand-written method on sparse and cluttered", "Completes the six 16 m map types",
+                models=STUDY_HAND, maps=["sparse_16", "cluttered_16"], **L16_COMMON))
+S12_COMMON = dict(n_agents=[4, 8, 16], seeds=[0, 1, 2], map_prior="unknown", sim={"max_time": 900.0},
+                  plots=SCALE_PLOTS, quick=dict(maps=["dense_12"], n_agents=[4], seeds=[0]))
+_add(Experiment("S12", "12 m: every hand-written method on the six map types", "The 12 m side of the size comparison",
+                models=STUDY_HAND, maps=ALL6_12, **S12_COMMON))
+_add(Experiment("S12_MARL", "12 m: MAPPO on the six map types", "MAPPO with the Navigator and with D-MPC, 12 m",
+                models=[MARL, ModelSpec("MAPPO + D-MPC", "marl_explorer+dmpc", _S)], maps=ALL6_12, **S12_COMMON))
+for _nm, _models in (("", [ModelSpec("Greedy", "greedy_explorer", _S), GREEDY_COORD_S, PARTITION_EXP_SHARED,
+                           CBBA_EXP_SHARED, ModelSpec("D-MPC", "frontier+dmpc", _S)]),
+                     ("_MARL", [ModelSpec("MAPPO", "marl_explorer", _S)])):
+    _add(Experiment(f"PRIOR_12{_nm}", "Map known vs unknown, 12 m", "Does knowing the map help? (12 m, 8 drones)",
+                    models=_models, maps=["dense_12", "random_rooms_12", "maze_12"],
+                    n_agents=[8], seeds=[0, 1], levers={"map_prior": ["known", "unknown"]}, sim={"max_time": 900.0},
+                    plots=[], quick=dict(maps=["maze_12"], seeds=[0])))

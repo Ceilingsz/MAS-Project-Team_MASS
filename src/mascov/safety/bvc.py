@@ -18,7 +18,7 @@ Sensing requirement: a neighbour must be sensed before it can get within d_safe 
 neighbor_radius >= d_safe + 2 * v_max * dt (+ buffer), where neighbor_radius is WorldConfig.r_neighbor
 (or r_comm when r_neighbor is None).
 
-This is the SAFETY part of the proposal's Layer 2. It is not the C-ADMM trajectory optimisation, and it
+This is a safety filter, not a trajectory optimiser (that is D-MPC, planning/dmpc.py), and it
 handles drone-drone avoidance only (no obstacles).
 """
 from __future__ import annotations

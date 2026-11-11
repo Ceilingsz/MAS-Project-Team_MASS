@@ -1,0 +1,1326 @@
+{
+ "12 m": {
+  "types": [
+   "Sparse",
+   "Cluttered",
+   "Dense",
+   "Random rooms",
+   "Maze",
+   "Warehouse"
+  ],
+  "algos": [
+   "Greedy",
+   "Greedy + goals",
+   "Geodesic",
+   "CBBA",
+   "D-MPC",
+   "Geodesic + D-MPC",
+   "CBBA + D-MPC",
+   "MAPPO",
+   "MAPPO + D-MPC"
+  ],
+  "rows": [
+   {
+    "label": "Greedy",
+    "cells": [
+     {
+      "t95": 37.3,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.71,
+      "lo": 1.15,
+      "hi": 2.26,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 34.0,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.45,
+      "lo": 1.27,
+      "hi": 1.64,
+      "slower": true,
+      "much_slower": true
+     },
+     {
+      "t95": 30.4,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.25,
+      "lo": 1.08,
+      "hi": 1.42,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 36.7,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.4,
+      "lo": 1.12,
+      "hi": 1.68,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 39.9,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.31,
+      "lo": 1.03,
+      "hi": 1.6,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 34.1,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.32,
+      "lo": 1.08,
+      "hi": 1.55,
+      "slower": true,
+      "much_slower": false
+     }
+    ]
+   },
+   {
+    "label": "Greedy + goals",
+    "cells": [
+     {
+      "t95": 29.3,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.31,
+      "lo": 0.99,
+      "hi": 1.63,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 33.1,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.42,
+      "lo": 1.29,
+      "hi": 1.56,
+      "slower": true,
+      "much_slower": true
+     },
+     {
+      "t95": 28.3,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.17,
+      "lo": 1.02,
+      "hi": 1.32,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 33.2,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.29,
+      "lo": 1.15,
+      "hi": 1.43,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 35.8,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.15,
+      "lo": 0.95,
+      "hi": 1.34,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 32.2,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.25,
+      "lo": 1.04,
+      "hi": 1.45,
+      "slower": true,
+      "much_slower": false
+     }
+    ]
+   },
+   {
+    "label": "Geodesic",
+    "cells": [
+     {
+      "t95": 28.2,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.28,
+      "lo": 1.03,
+      "hi": 1.53,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 27.1,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.14,
+      "lo": 1.01,
+      "hi": 1.26,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 27.9,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.15,
+      "lo": 0.97,
+      "hi": 1.34,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 28.2,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.1,
+      "lo": 0.98,
+      "hi": 1.22,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 31.9,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.04,
+      "lo": 0.97,
+      "hi": 1.11,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 27.6,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.09,
+      "lo": 0.98,
+      "hi": 1.19,
+      "slower": false,
+      "much_slower": false
+     }
+    ]
+   },
+   {
+    "label": "CBBA",
+    "cells": [
+     {
+      "t95": 25.5,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.17,
+      "lo": 1.1,
+      "hi": 1.25,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 27.3,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.15,
+      "lo": 1.01,
+      "hi": 1.3,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 26.5,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.09,
+      "lo": 0.95,
+      "hi": 1.23,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 30.7,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.17,
+      "lo": 0.98,
+      "hi": 1.37,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 40.8,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.29,
+      "lo": 0.97,
+      "hi": 1.62,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 27.8,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.09,
+      "lo": 0.97,
+      "hi": 1.21,
+      "slower": false,
+      "much_slower": false
+     }
+    ]
+   },
+   {
+    "label": "D-MPC",
+    "cells": [
+     {
+      "t95": 33.4,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.53,
+      "lo": 1.15,
+      "hi": 1.91,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 28.6,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.22,
+      "lo": 1.09,
+      "hi": 1.35,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 27.6,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.14,
+      "lo": 0.99,
+      "hi": 1.3,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 35.7,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.39,
+      "lo": 1.21,
+      "hi": 1.56,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 38.1,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.23,
+      "lo": 1.05,
+      "hi": 1.41,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 27.1,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.07,
+      "lo": 0.98,
+      "hi": 1.16,
+      "slower": false,
+      "much_slower": false
+     }
+    ]
+   },
+   {
+    "label": "Geodesic + D-MPC",
+    "cells": [
+     {
+      "t95": 23.4,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.08,
+      "lo": 0.98,
+      "hi": 1.17,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 26.5,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.12,
+      "lo": 0.98,
+      "hi": 1.25,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 25.9,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.08,
+      "lo": 0.96,
+      "hi": 1.2,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 28.5,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.11,
+      "lo": 0.96,
+      "hi": 1.27,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 30.6,
+      "done": 1.0,
+      "n": 9,
+      "fastest": true,
+      "ratio": 1.0,
+      "lo": 1.0,
+      "hi": 1.0,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 26.9,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.06,
+      "lo": 0.96,
+      "hi": 1.15,
+      "slower": false,
+      "much_slower": false
+     }
+    ]
+   },
+   {
+    "label": "CBBA + D-MPC",
+    "cells": [
+     {
+      "t95": 29.2,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.31,
+      "lo": 1.09,
+      "hi": 1.52,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 27.0,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.14,
+      "lo": 1.04,
+      "hi": 1.25,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 26.9,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.12,
+      "lo": 0.96,
+      "hi": 1.27,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 34.3,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.3,
+      "lo": 1.01,
+      "hi": 1.59,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 38.1,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.23,
+      "lo": 1.0,
+      "hi": 1.46,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 28.0,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.09,
+      "lo": 1.0,
+      "hi": 1.19,
+      "slower": false,
+      "much_slower": false
+     }
+    ]
+   },
+   {
+    "label": "MAPPO",
+    "cells": [
+     {
+      "t95": 22.9,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.04,
+      "lo": 0.96,
+      "hi": 1.13,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 24.1,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.02,
+      "lo": 0.96,
+      "hi": 1.08,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 24.5,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.01,
+      "lo": 0.9,
+      "hi": 1.13,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 27.4,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.06,
+      "lo": 0.95,
+      "hi": 1.17,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 33.4,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.1,
+      "lo": 0.93,
+      "hi": 1.27,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 26.5,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.03,
+      "lo": 0.95,
+      "hi": 1.11,
+      "slower": false,
+      "much_slower": false
+     }
+    ]
+   },
+   {
+    "label": "MAPPO + D-MPC",
+    "cells": [
+     {
+      "t95": 21.6,
+      "done": 1.0,
+      "n": 9,
+      "fastest": true,
+      "ratio": 1.0,
+      "lo": 1.0,
+      "hi": 1.0,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 23.3,
+      "done": 1.0,
+      "n": 9,
+      "fastest": true,
+      "ratio": 1.0,
+      "lo": 1.0,
+      "hi": 1.0,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 24.2,
+      "done": 1.0,
+      "n": 9,
+      "fastest": true,
+      "ratio": 1.0,
+      "lo": 1.0,
+      "hi": 1.0,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 25.6,
+      "done": 1.0,
+      "n": 9,
+      "fastest": true,
+      "ratio": 1.0,
+      "lo": 1.0,
+      "hi": 1.0,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 32.4,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.08,
+      "lo": 0.89,
+      "hi": 1.26,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 25.5,
+      "done": 1.0,
+      "n": 9,
+      "fastest": true,
+      "ratio": 1.0,
+      "lo": 1.0,
+      "hi": 1.0,
+      "slower": false,
+      "much_slower": false
+     }
+    ]
+   }
+  ]
+ },
+ "16 m": {
+  "types": [
+   "Sparse",
+   "Cluttered",
+   "Dense",
+   "Random rooms",
+   "Maze",
+   "Warehouse"
+  ],
+  "algos": [
+   "Greedy",
+   "Greedy + goals",
+   "Geodesic",
+   "CBBA",
+   "D-MPC",
+   "Geodesic + D-MPC",
+   "CBBA + D-MPC",
+   "MAPPO",
+   "MAPPO + D-MPC"
+  ],
+  "rows": [
+   {
+    "label": "Greedy",
+    "cells": [
+     {
+      "t95": 56.8,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.54,
+      "lo": 1.16,
+      "hi": 1.93,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 51.9,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.38,
+      "lo": 1.16,
+      "hi": 1.59,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 54.9,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.38,
+      "lo": 1.1,
+      "hi": 1.67,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 67.7,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.65,
+      "lo": 1.37,
+      "hi": 1.92,
+      "slower": true,
+      "much_slower": true
+     },
+     {
+      "t95": 53.9,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.22,
+      "lo": 1.09,
+      "hi": 1.35,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 61.7,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.52,
+      "lo": 1.3,
+      "hi": 1.73,
+      "slower": true,
+      "much_slower": true
+     }
+    ]
+   },
+   {
+    "label": "Greedy + goals",
+    "cells": [
+     {
+      "t95": 49.6,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.38,
+      "lo": 1.11,
+      "hi": 1.65,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 46.5,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.22,
+      "lo": 1.07,
+      "hi": 1.37,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 47.2,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.19,
+      "lo": 1.08,
+      "hi": 1.3,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 52.0,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.24,
+      "lo": 1.04,
+      "hi": 1.44,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 52.7,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.18,
+      "lo": 1.04,
+      "hi": 1.32,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 47.9,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.18,
+      "lo": 1.06,
+      "hi": 1.3,
+      "slower": true,
+      "much_slower": false
+     }
+    ]
+   },
+   {
+    "label": "Geodesic",
+    "cells": [
+     {
+      "t95": 50.5,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.39,
+      "lo": 1.13,
+      "hi": 1.66,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 42.5,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.13,
+      "lo": 1.01,
+      "hi": 1.24,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 42.0,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.08,
+      "lo": 0.99,
+      "hi": 1.16,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 41.4,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.02,
+      "lo": 0.95,
+      "hi": 1.08,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 47.9,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.09,
+      "lo": 0.98,
+      "hi": 1.21,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 43.7,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.09,
+      "lo": 1.02,
+      "hi": 1.16,
+      "slower": true,
+      "much_slower": false
+     }
+    ]
+   },
+   {
+    "label": "CBBA",
+    "cells": [
+     {
+      "t95": 47.6,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.32,
+      "lo": 1.07,
+      "hi": 1.57,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 46.8,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.22,
+      "lo": 1.04,
+      "hi": 1.4,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 44.8,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.15,
+      "lo": 1.08,
+      "hi": 1.22,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 47.7,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.13,
+      "lo": 0.97,
+      "hi": 1.28,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 55.8,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.23,
+      "lo": 1.02,
+      "hi": 1.44,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 47.0,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.14,
+      "lo": 1.03,
+      "hi": 1.25,
+      "slower": true,
+      "much_slower": false
+     }
+    ]
+   },
+   {
+    "label": "D-MPC",
+    "cells": [
+     {
+      "t95": 47.9,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.35,
+      "lo": 1.09,
+      "hi": 1.62,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 50.1,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.35,
+      "lo": 0.99,
+      "hi": 1.71,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 47.1,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.22,
+      "lo": 1.0,
+      "hi": 1.44,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 51.6,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.26,
+      "lo": 1.09,
+      "hi": 1.43,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 61.5,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.37,
+      "lo": 1.19,
+      "hi": 1.54,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 52.1,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.28,
+      "lo": 1.12,
+      "hi": 1.44,
+      "slower": true,
+      "much_slower": false
+     }
+    ]
+   },
+   {
+    "label": "Geodesic + D-MPC",
+    "cells": [
+     {
+      "t95": 37.9,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.06,
+      "lo": 1.0,
+      "hi": 1.11,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 40.2,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.06,
+      "lo": 0.97,
+      "hi": 1.15,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 43.1,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.1,
+      "lo": 1.04,
+      "hi": 1.17,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 43.6,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.06,
+      "lo": 1.0,
+      "hi": 1.11,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 44.1,
+      "done": 1.0,
+      "n": 9,
+      "fastest": true,
+      "ratio": 1.0,
+      "lo": 1.0,
+      "hi": 1.0,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 43.7,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.08,
+      "lo": 1.02,
+      "hi": 1.14,
+      "slower": true,
+      "much_slower": false
+     }
+    ]
+   },
+   {
+    "label": "CBBA + D-MPC",
+    "cells": [
+     {
+      "t95": 46.5,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.25,
+      "lo": 1.0,
+      "hi": 1.5,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 49.3,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.29,
+      "lo": 1.09,
+      "hi": 1.48,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 45.9,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.19,
+      "lo": 1.02,
+      "hi": 1.37,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 46.9,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.12,
+      "lo": 1.0,
+      "hi": 1.24,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 54.1,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.19,
+      "lo": 1.0,
+      "hi": 1.39,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 49.2,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.2,
+      "lo": 1.05,
+      "hi": 1.34,
+      "slower": true,
+      "much_slower": false
+     }
+    ]
+   },
+   {
+    "label": "MAPPO",
+    "cells": [
+     {
+      "t95": 36.6,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.01,
+      "lo": 0.97,
+      "hi": 1.05,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 37.0,
+      "done": 1.0,
+      "n": 9,
+      "fastest": true,
+      "ratio": 1.0,
+      "lo": 1.0,
+      "hi": 1.0,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 39.0,
+      "done": 1.0,
+      "n": 9,
+      "fastest": true,
+      "ratio": 1.0,
+      "lo": 1.0,
+      "hi": 1.0,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 42.0,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.01,
+      "lo": 0.94,
+      "hi": 1.08,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 50.5,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.13,
+      "lo": 1.01,
+      "hi": 1.26,
+      "slower": true,
+      "much_slower": false
+     },
+     {
+      "t95": 41.7,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.03,
+      "lo": 0.98,
+      "hi": 1.08,
+      "slower": false,
+      "much_slower": false
+     }
+    ]
+   },
+   {
+    "label": "MAPPO + D-MPC",
+    "cells": [
+     {
+      "t95": 35.9,
+      "done": 1.0,
+      "n": 9,
+      "fastest": true,
+      "ratio": 1.0,
+      "lo": 1.0,
+      "hi": 1.0,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 37.7,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.02,
+      "lo": 0.98,
+      "hi": 1.05,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 39.8,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.03,
+      "lo": 0.97,
+      "hi": 1.08,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 41.1,
+      "done": 1.0,
+      "n": 9,
+      "fastest": true,
+      "ratio": 1.0,
+      "lo": 1.0,
+      "hi": 1.0,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 47.1,
+      "done": 1.0,
+      "n": 9,
+      "fastest": false,
+      "ratio": 1.06,
+      "lo": 0.97,
+      "hi": 1.16,
+      "slower": false,
+      "much_slower": false
+     },
+     {
+      "t95": 40.4,
+      "done": 1.0,
+      "n": 9,
+      "fastest": true,
+      "ratio": 1.0,
+      "lo": 1.0,
+      "hi": 1.0,
+      "slower": false,
+      "much_slower": false
+     }
+    ]
+   }
+  ]
+ }
+}
