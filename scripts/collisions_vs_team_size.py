@@ -23,6 +23,7 @@ ALGOS = {   # the deck's five, plus geodesic goals flown by D-MPC
     "CBBA": ("cbba_explorer", dict(share=True)),
     "D-MPC": ("frontier+dmpc", dict(share=True)),
     "Geodesic + D-MPC": ("geodesic_partition+dmpc", dict(share=True)),
+    "MAPPO": ("marl_explorer", dict(share=True)),           # run with --only MAPPO
     "Greedy + D-MPC": ("greedy_explorer+dmpc", dict(share=True)),     # completes the 3 x 2 grid
     "CBBA + D-MPC": ("cbba_explorer+dmpc", dict(share=True)),
 }
@@ -56,8 +57,10 @@ def main():
     ap.add_argument("--n", type=int, nargs="+", default=[2, 4, 6, 8])
     ap.add_argument("--only", nargs="+", default=None, help="run only these labels")
     ap.add_argument("--append", action="store_true", help="add rows to an existing file")
+    ap.add_argument("--maps", nargs="+", default=None, help="maps (default: sparse, rooms_and_door, cluttered)")
     a = ap.parse_args()
-    algos = {k: v for k, v in ALGOS.items() if a.only is None or k in a.only}
+    MAPS[:] = a.maps or MAPS
+    algos = {k: v for k, v in ALGOS.items() if (k in a.only if a.only else k != "MAPPO")}
     jobs = [dict(label=lab, model=m, kwargs=kw, map=mp, n_agents=n, seed=s)
             for s in range(a.seeds) for mp in MAPS for n in a.n for lab, (m, kw) in algos.items()]
     out = Path(a.out)

@@ -24,6 +24,7 @@ ALGOS = {
     "Geodesic": ("geodesic_partition", dict(share=True)),
     "D-MPC": ("frontier+dmpc", dict(share=True)),
     "CBBA": ("cbba_explorer", dict(share=True)),
+    "MAPPO": ("marl_explorer", dict(share=True)),           # run with --only MAPPO
 }
 RADII = [0.5, 1.0, 1.5, 3.0, 6.0, math.inf]
 FIELDS = ["label", "model", "map", "n_agents", "seed", "r_comm", "completed", "t95", "pair_events",
@@ -58,9 +59,11 @@ def main():
     ap.add_argument("--n", type=int, default=6)
     ap.add_argument("--map", default="rooms_and_door")
     ap.add_argument("--radii", type=float, nargs="+", default=RADII)
+    ap.add_argument("--only", nargs="+", default=None, help="run only these labels")
     a = ap.parse_args()
     jobs = [dict(label=lab, model=m, kwargs=kw, map=a.map, n_agents=a.n, seed=s, r_comm=rc)
-            for s in range(a.seeds) for rc in a.radii for lab, (m, kw) in ALGOS.items()]
+            for s in range(a.seeds) for rc in a.radii for lab, (m, kw) in ALGOS.items()
+            if (lab in a.only if a.only else lab != "MAPPO")]
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     t0 = time.perf_counter()

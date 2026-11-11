@@ -1,0 +1,109 @@
+size,label,type,t95,done,n,fastest,ratio,lo,hi,slower,much_slower
+12 m,Greedy,Sparse,37.3,1.0,9,False,1.71,1.15,2.26,True,False
+12 m,Greedy + goals,Sparse,29.3,1.0,9,False,1.31,0.99,1.63,False,False
+12 m,Geodesic,Sparse,28.2,1.0,9,False,1.28,1.03,1.53,True,False
+12 m,CBBA,Sparse,25.5,1.0,9,False,1.17,1.1,1.25,True,False
+12 m,D-MPC,Sparse,33.4,1.0,9,False,1.53,1.15,1.91,True,False
+12 m,Geodesic + D-MPC,Sparse,23.4,1.0,9,False,1.08,0.98,1.17,False,False
+12 m,CBBA + D-MPC,Sparse,29.2,1.0,9,False,1.31,1.09,1.52,True,False
+12 m,MAPPO,Sparse,22.9,1.0,9,False,1.04,0.96,1.13,False,False
+12 m,MAPPO + D-MPC,Sparse,21.6,1.0,9,True,1.0,1.0,1.0,False,False
+12 m,Greedy,Cluttered,34.0,1.0,9,False,1.45,1.27,1.64,True,True
+12 m,Greedy + goals,Cluttered,33.1,1.0,9,False,1.42,1.29,1.56,True,True
+12 m,Geodesic,Cluttered,27.1,1.0,9,False,1.14,1.01,1.26,True,False
+12 m,CBBA,Cluttered,27.3,1.0,9,False,1.15,1.01,1.3,True,False
+12 m,D-MPC,Cluttered,28.6,1.0,9,False,1.22,1.09,1.35,True,False
+12 m,Geodesic + D-MPC,Cluttered,26.5,1.0,9,False,1.12,0.98,1.25,False,False
+12 m,CBBA + D-MPC,Cluttered,27.0,1.0,9,False,1.14,1.04,1.25,True,False
+12 m,MAPPO,Cluttered,24.1,1.0,9,False,1.02,0.96,1.08,False,False
+12 m,MAPPO + D-MPC,Cluttered,23.3,1.0,9,True,1.0,1.0,1.0,False,False
+12 m,Greedy,Dense,30.4,1.0,9,False,1.25,1.08,1.42,True,False
+12 m,Greedy + goals,Dense,28.3,1.0,9,False,1.17,1.02,1.32,True,False
+12 m,Geodesic,Dense,27.9,1.0,9,False,1.15,0.97,1.34,False,False
+12 m,CBBA,Dense,26.5,1.0,9,False,1.09,0.95,1.23,False,False
+12 m,D-MPC,Dense,27.6,1.0,9,False,1.14,0.99,1.3,False,False
+12 m,Geodesic + D-MPC,Dense,25.9,1.0,9,False,1.08,0.96,1.2,False,False
+12 m,CBBA + D-MPC,Dense,26.9,1.0,9,False,1.12,0.96,1.27,False,False
+12 m,MAPPO,Dense,24.5,1.0,9,False,1.01,0.9,1.13,False,False
+12 m,MAPPO + D-MPC,Dense,24.2,1.0,9,True,1.0,1.0,1.0,False,False
+12 m,Greedy,Random rooms,36.7,1.0,9,False,1.4,1.12,1.68,True,False
+12 m,Greedy + goals,Random rooms,33.2,1.0,9,False,1.29,1.15,1.43,True,False
+12 m,Geodesic,Random rooms,28.2,1.0,9,False,1.1,0.98,1.22,False,False
+12 m,CBBA,Random rooms,30.7,1.0,9,False,1.17,0.98,1.37,False,False
+12 m,D-MPC,Random rooms,35.7,1.0,9,False,1.39,1.21,1.56,True,False
+12 m,Geodesic + D-MPC,Random rooms,28.5,1.0,9,False,1.11,0.96,1.27,False,False
+12 m,CBBA + D-MPC,Random rooms,34.3,1.0,9,False,1.3,1.01,1.59,True,False
+12 m,MAPPO,Random rooms,27.4,1.0,9,False,1.06,0.95,1.17,False,False
+12 m,MAPPO + D-MPC,Random rooms,25.6,1.0,9,True,1.0,1.0,1.0,False,False
+12 m,Greedy,Maze,39.9,1.0,9,False,1.31,1.03,1.6,True,False
+12 m,Greedy + goals,Maze,35.8,1.0,9,False,1.15,0.95,1.34,False,False
+12 m,Geodesic,Maze,31.9,1.0,9,False,1.04,0.97,1.11,False,False
+12 m,CBBA,Maze,40.8,1.0,9,False,1.29,0.97,1.62,False,False
+12 m,D-MPC,Maze,38.1,1.0,9,False,1.23,1.05,1.41,True,False
+12 m,Geodesic + D-MPC,Maze,30.6,1.0,9,True,1.0,1.0,1.0,False,False
+12 m,CBBA + D-MPC,Maze,38.1,1.0,9,False,1.23,1.0,1.46,False,False
+12 m,MAPPO,Maze,33.4,1.0,9,False,1.1,0.93,1.27,False,False
+12 m,MAPPO + D-MPC,Maze,32.4,1.0,9,False,1.08,0.89,1.26,False,False
+12 m,Greedy,Warehouse,34.1,1.0,9,False,1.32,1.08,1.55,True,False
+12 m,Greedy + goals,Warehouse,32.2,1.0,9,False,1.25,1.04,1.45,True,False
+12 m,Geodesic,Warehouse,27.6,1.0,9,False,1.09,0.98,1.19,False,False
+12 m,CBBA,Warehouse,27.8,1.0,9,False,1.09,0.97,1.21,False,False
+12 m,D-MPC,Warehouse,27.1,1.0,9,False,1.07,0.98,1.16,False,False
+12 m,Geodesic + D-MPC,Warehouse,26.9,1.0,9,False,1.06,0.96,1.15,False,False
+12 m,CBBA + D-MPC,Warehouse,28.0,1.0,9,False,1.09,1.0,1.19,False,False
+12 m,MAPPO,Warehouse,26.5,1.0,9,False,1.03,0.95,1.11,False,False
+12 m,MAPPO + D-MPC,Warehouse,25.5,1.0,9,True,1.0,1.0,1.0,False,False
+16 m,Greedy,Sparse,56.8,1.0,9,False,1.54,1.16,1.93,True,False
+16 m,Greedy + goals,Sparse,49.6,1.0,9,False,1.38,1.11,1.65,True,False
+16 m,Geodesic,Sparse,50.5,1.0,9,False,1.39,1.13,1.66,True,False
+16 m,CBBA,Sparse,47.6,1.0,9,False,1.32,1.07,1.57,True,False
+16 m,D-MPC,Sparse,47.9,1.0,9,False,1.35,1.09,1.62,True,False
+16 m,Geodesic + D-MPC,Sparse,37.9,1.0,9,False,1.06,1.0,1.11,True,False
+16 m,CBBA + D-MPC,Sparse,46.5,1.0,9,False,1.25,1.0,1.5,False,False
+16 m,MAPPO,Sparse,36.6,1.0,9,False,1.01,0.97,1.05,False,False
+16 m,MAPPO + D-MPC,Sparse,35.9,1.0,9,True,1.0,1.0,1.0,False,False
+16 m,Greedy,Cluttered,51.9,1.0,9,False,1.38,1.16,1.59,True,False
+16 m,Greedy + goals,Cluttered,46.5,1.0,9,False,1.22,1.07,1.37,True,False
+16 m,Geodesic,Cluttered,42.5,1.0,9,False,1.13,1.01,1.24,True,False
+16 m,CBBA,Cluttered,46.8,1.0,9,False,1.22,1.04,1.4,True,False
+16 m,D-MPC,Cluttered,50.1,1.0,9,False,1.35,0.99,1.71,False,False
+16 m,Geodesic + D-MPC,Cluttered,40.2,1.0,9,False,1.06,0.97,1.15,False,False
+16 m,CBBA + D-MPC,Cluttered,49.3,1.0,9,False,1.29,1.09,1.48,True,False
+16 m,MAPPO,Cluttered,37.0,1.0,9,True,1.0,1.0,1.0,False,False
+16 m,MAPPO + D-MPC,Cluttered,37.7,1.0,9,False,1.02,0.98,1.05,False,False
+16 m,Greedy,Dense,54.9,1.0,9,False,1.38,1.1,1.67,True,False
+16 m,Greedy + goals,Dense,47.2,1.0,9,False,1.19,1.08,1.3,True,False
+16 m,Geodesic,Dense,42.0,1.0,9,False,1.08,0.99,1.16,False,False
+16 m,CBBA,Dense,44.8,1.0,9,False,1.15,1.08,1.22,True,False
+16 m,D-MPC,Dense,47.1,1.0,9,False,1.22,1.0,1.44,True,False
+16 m,Geodesic + D-MPC,Dense,43.1,1.0,9,False,1.1,1.04,1.17,True,False
+16 m,CBBA + D-MPC,Dense,45.9,1.0,9,False,1.19,1.02,1.37,True,False
+16 m,MAPPO,Dense,39.0,1.0,9,True,1.0,1.0,1.0,False,False
+16 m,MAPPO + D-MPC,Dense,39.8,1.0,9,False,1.03,0.97,1.08,False,False
+16 m,Greedy,Random rooms,67.7,1.0,9,False,1.65,1.37,1.92,True,True
+16 m,Greedy + goals,Random rooms,52.0,1.0,9,False,1.24,1.04,1.44,True,False
+16 m,Geodesic,Random rooms,41.4,1.0,9,False,1.02,0.95,1.08,False,False
+16 m,CBBA,Random rooms,47.7,1.0,9,False,1.13,0.97,1.28,False,False
+16 m,D-MPC,Random rooms,51.6,1.0,9,False,1.26,1.09,1.43,True,False
+16 m,Geodesic + D-MPC,Random rooms,43.6,1.0,9,False,1.06,1.0,1.11,True,False
+16 m,CBBA + D-MPC,Random rooms,46.9,1.0,9,False,1.12,1.0,1.24,False,False
+16 m,MAPPO,Random rooms,42.0,1.0,9,False,1.01,0.94,1.08,False,False
+16 m,MAPPO + D-MPC,Random rooms,41.1,1.0,9,True,1.0,1.0,1.0,False,False
+16 m,Greedy,Maze,53.9,1.0,9,False,1.22,1.09,1.35,True,False
+16 m,Greedy + goals,Maze,52.7,1.0,9,False,1.18,1.04,1.32,True,False
+16 m,Geodesic,Maze,47.9,1.0,9,False,1.09,0.98,1.21,False,False
+16 m,CBBA,Maze,55.8,1.0,9,False,1.23,1.02,1.44,True,False
+16 m,D-MPC,Maze,61.5,1.0,9,False,1.37,1.19,1.54,True,False
+16 m,Geodesic + D-MPC,Maze,44.1,1.0,9,True,1.0,1.0,1.0,False,False
+16 m,CBBA + D-MPC,Maze,54.1,1.0,9,False,1.19,1.0,1.39,False,False
+16 m,MAPPO,Maze,50.5,1.0,9,False,1.13,1.01,1.26,True,False
+16 m,MAPPO + D-MPC,Maze,47.1,1.0,9,False,1.06,0.97,1.16,False,False
+16 m,Greedy,Warehouse,61.7,1.0,9,False,1.52,1.3,1.73,True,True
+16 m,Greedy + goals,Warehouse,47.9,1.0,9,False,1.18,1.06,1.3,True,False
+16 m,Geodesic,Warehouse,43.7,1.0,9,False,1.09,1.02,1.16,True,False
+16 m,CBBA,Warehouse,47.0,1.0,9,False,1.14,1.03,1.25,True,False
+16 m,D-MPC,Warehouse,52.1,1.0,9,False,1.28,1.12,1.44,True,False
+16 m,Geodesic + D-MPC,Warehouse,43.7,1.0,9,False,1.08,1.02,1.14,True,False
+16 m,CBBA + D-MPC,Warehouse,49.2,1.0,9,False,1.2,1.05,1.34,True,False
+16 m,MAPPO,Warehouse,41.7,1.0,9,False,1.03,0.98,1.08,False,False
+16 m,MAPPO + D-MPC,Warehouse,40.4,1.0,9,True,1.0,1.0,1.0,False,False

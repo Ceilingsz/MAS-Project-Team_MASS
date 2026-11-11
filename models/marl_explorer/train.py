@@ -17,7 +17,7 @@ Formulation (a Dec-POMDP with macro-actions, MacDec-POMDP):
 The training harness is the only place that touches ground truth (the critic input and the reward). The actor
 sees exactly what ``MARLExplorerPolicy`` sees at execution.
 
-    python scripts/train_marl.py --iters 300 --episodes 64 --workers 14
+    python scripts/train_marl.py --init-actor <checkpoint> --iters 200 --episodes 48 --workers 13
 """
 from __future__ import annotations
 
@@ -53,36 +53,46 @@ class EpisodeSpec:
     sim_seed: int = 0
 
 
-TRAIN_MAPS = {"sparse": 0.3, "cluttered": 0.3, "rooms_and_door": 0.15, "corridor": 0.12, "empty": 0.05,
-              "labyrinth": 0.08}
-RANDOM_MAPS = {"sparse", "cluttered"}        # seeded generators: seeds < 1000 are reserved for evaluation
+# Training curriculum: world size -> (maps, team sizes, max simulated time). The study's scale is 12-16 m with up to 16
+# drones; bigger worlds are held out (a generalisation test, and 3-5x slower to simulate).
+FIXED_MAPS = {"empty", "corridor", "rooms_and_door", "labyrinth"}   # one layout each (no seed); at most 8 drones fit
+CURRICULUM = {
+    12: (["sparse", "cluttered", "rooms_and_door", "corridor", "labyrinth", "empty",
+          "dense_12", "random_rooms_12", "maze_12", "warehouse_12"], list(range(2, 9)), 400.0),
+    16: (["sparse_16", "cluttered_16", "dense_16", "random_rooms_16", "maze_16", "warehouse_16"],
+         list(range(4, 17)), 300.0),
+}
+SIZE_P = {12: 0.5, 16: 0.5}
 
 
 def sample_spec(rng: np.random.Generator) -> EpisodeSpec:
-    names, w = zip(*TRAIN_MAPS.items())
-    m = str(rng.choice(names, p=np.asarray(w) / sum(w)))
-    seed = int(rng.integers(1000, 10**6)) if m in RANDOM_MAPS else 0
-    n = int(rng.choice([2, 3, 4, 5, 6, 8], p=[0.18, 0.22, 0.22, 0.13, 0.15, 0.10]))
-    r = float(rng.choice([1.5, 3.0, 6.0, math.inf], p=[0.2, 0.25, 0.2, 0.35]))
-    wide = rng.random() < 0.4
-    return EpisodeSpec(map=m, seed=seed, n=n, r_comm=r, eps_track=0.45 if rng.random() < 0.4 else 0.3,
+    """A random training episode. Seeds >= 1000 only (0-999 are reserved for validation and tests)."""
+    size = int(rng.choice(list(SIZE_P), p=list(SIZE_P.values())))
+    maps, ns, max_time = CURRICULUM[size]
+    m = str(rng.choice(maps))
+    n = int(rng.choice(ns))
+    seed = 0 if m in FIXED_MAPS else int(rng.integers(1000, 10**6))
+    r = float(rng.choice([1.5, 3.0, 6.0, math.inf], p=[0.15, 0.25, 0.25, 0.35]))
+    wide = size == 12 and n <= 8 and rng.random() < 0.3
+    return EpisodeSpec(map=m, seed=seed, n=n, r_comm=r, eps_track=0.45 if rng.random() < 0.3 else 0.3,
                        start_spacing=2.0 if wide else 0.8, start_per_row=2 if wide else 3,
-                       reveal=bool(rng.random() < 0.15), sim_seed=int(rng.integers(0, 10**6)))
+                       reveal=bool(rng.random() < 0.1), max_time=max_time, sim_seed=int(rng.integers(0, 10**6)))
 
 
 def validation_specs() -> list[EpisodeSpec]:
-    """Held-out evaluation set: seeds 0-9 of the random maps (never trained on), the fixed maps, 2-8 drones."""
-    out = []
-    for n in (3, 6):
-        for s in (0, 1, 2):
-            out.append(EpisodeSpec("sparse", s, n))
-            out.append(EpisodeSpec("cluttered", s, n))
-        out.append(EpisodeSpec("rooms_and_door", 0, n))
-        out.append(EpisodeSpec("corridor", 0, n))
-        out.append(EpisodeSpec("labyrinth", 0, n))
-    out.append(EpisodeSpec("rooms_and_door", 0, 4, r_comm=3.0))
-    out.append(EpisodeSpec("cluttered", 3, 8, r_comm=3.0))
-    return out
+    """Checkpoint selection set: seeds 900-901 (never trained on, and apart from the test seeds 0-9), 12-16 m worlds,
+    3-16 drones, three of them with short messages."""
+    E = EpisodeSpec
+    return [
+        E("sparse", 900, 3), E("cluttered", 901, 6), E("rooms_and_door", 0, 4), E("labyrinth", 0, 6),
+        E("maze_12", 900, 4), E("random_rooms_12", 900, 6, r_comm=3.0), E("dense_12", 901, 8),
+        E("dense_16", 900, 6, max_time=600), E("random_rooms_16", 901, 8, max_time=600),
+        E("maze_16", 900, 10, max_time=600), E("warehouse_16", 900, 6, r_comm=3.0, max_time=600),
+        E("cluttered_16", 900, 12, max_time=600), E("sparse_16", 901, 4, max_time=600),
+        E("random_rooms_16", 900, 12, max_time=600), E("maze_16", 901, 16, max_time=600),
+        E("dense_16", 901, 16, r_comm=3.0, max_time=600), E("warehouse_16", 901, 10, max_time=600),
+        E("sparse_16", 900, 8, r_comm=6.0, max_time=600),
+    ]
 
 
 def make_world_for(spec: EpisodeSpec):
@@ -235,12 +245,17 @@ def run_baseline(args) -> dict:
 
 
 # ====================================================================================== learner side
-GRID = 24
+GRID = 48          # critic images are padded to the largest supported world (24 m at 0.5 m cells)
 
 
 def critic_inputs(ep: dict, snap_idx: np.ndarray, agent: np.ndarray, final: bool = False):
-    """Critic image (T, 5, 24, 24) uint8 and scalars (T, 5) float32 for the given snapshots / agents."""
+    """Critic image (T, 6, 48, 48) uint8 and scalars (T, 6) float32 for the given snapshots / agents.
+
+    Channels: covered coverable cells, uncovered coverable cells, obstacle cells, drones (count), this drone,
+    inside the workspace (smaller worlds are padded with zeros)."""
     n = ep["spec"]["n"]
+    G = ep["covmask"].size
+    g = int(round(math.sqrt(G)))
     if final:
         cov = ep["final_cov"][None].repeat(len(agent), 0)
         pos = ep["final_pos"][None].repeat(len(agent), 0)
@@ -248,20 +263,23 @@ def critic_inputs(ep: dict, snap_idx: np.ndarray, agent: np.ndarray, final: bool
     else:
         cov, pos, t = ep["snap_cov"][snap_idx], ep["snap_pos"][snap_idx], ep["snap_t"][snap_idx]
     T = len(agent)
-    img = np.zeros((T, 5, GRID * GRID), dtype=np.uint8)
-    img[:, 0] = cov
-    img[:, 1] = ep["covmask"][None] & ~cov
-    img[:, 2] = ep["obst"][None]
-    cell = (np.clip((pos[..., 1] / 0.5).astype(int), 0, GRID - 1) * GRID
-            + np.clip((pos[..., 0] / 0.5).astype(int), 0, GRID - 1))          # (T, n)
+    small = np.zeros((T, 6, g * g), dtype=np.uint8)
+    small[:, 0] = cov
+    small[:, 1] = ep["covmask"][None] & ~cov
+    small[:, 2] = ep["obst"][None]
+    cell = (np.clip((pos[..., 1] / 0.5).astype(int), 0, g - 1) * g
+            + np.clip((pos[..., 0] / 0.5).astype(int), 0, g - 1))          # (T, n)
     rows = np.repeat(np.arange(T), n)
-    np.add.at(img[:, 3], (rows, cell.reshape(-1)), 1)
-    img[np.arange(T), 4, cell[np.arange(T), agent]] = 1
+    np.add.at(small[:, 3], (rows, cell.reshape(-1)), 1)
+    small[np.arange(T), 4, cell[np.arange(T), agent]] = 1
+    small[:, 5] = 1
+    img = np.zeros((T, 6, GRID, GRID), dtype=np.uint8)
+    img[:, :, :g, :g] = small.reshape(T, 6, g, g)
     covfrac = cov.sum(axis=1) / ep["n_cov"]
     r = ep["spec"]["r_comm"]
     scal = np.stack([t / 300.0, np.full(T, n / 8.0), covfrac, np.full(T, 0.0 if not math.isfinite(r) else 1 / (1 + r)),
-                     np.full(T, float(ep["spec"]["reveal"]))], axis=1).astype(np.float32)
-    return img.reshape(T, 5, GRID, GRID), scal
+                     np.full(T, float(ep["spec"]["reveal"])), np.full(T, g / GRID)], axis=1).astype(np.float32)
+    return img, scal
 
 
 def episode_targets(ep: dict, values: np.ndarray, v_final: np.ndarray, gamma: float, lam: float):
@@ -298,23 +316,24 @@ def episode_targets(ep: dict, values: np.ndarray, v_final: np.ndarray, gamma: fl
 
 @dataclass
 class TrainConfig:
-    iters: int = 300
-    episodes: int = 64
-    workers: int = 14
-    lr_actor: float = 2e-4
+    iters: int = 200
+    episodes: int = 48
+    workers: int = 13
+    lr_actor: float = 1e-4
     lr_critic: float = 5e-4
     gamma: float = 0.995          # per second
     lam: float = 0.95
     clip: float = 0.2
     epochs: int = 4
     minibatch: int = 2048
-    entropy: float = 0.01
-    entropy_final: float = 0.002
+    entropy: float = 0.005
+    entropy_final: float = 0.001
     max_grad: float = 1.0
     eval_every: int = 10
     seed: int = 0
     out: str = str(ROOT / "models" / "marl_explorer" / "checkpoints")
     resume: str | None = None
+    init_actor: str | None = None      # warm start: load only the actor's weights from this checkpoint
     actor_kwargs: dict = field(default_factory=dict)
 
 
@@ -361,6 +380,8 @@ def train(cfg: TrainConfig) -> Path:
             critic.load_state_dict(blob["critic"])
         vnorm.mean, vnorm.var, vnorm.n = blob.get("vnorm", (0.0, 1.0, 1e-4))
         start_iter = blob.get("iter", 0)
+    elif cfg.init_actor:
+        actor.load_state_dict(torch.load(cfg.init_actor, map_location=dev, weights_only=False)["actor"])
     opt_a = torch.optim.Adam(actor.parameters(), lr=cfg.lr_actor, eps=1e-5)
     opt_c = torch.optim.Adam(critic.parameters(), lr=cfg.lr_critic, eps=1e-5)
 
@@ -388,8 +409,17 @@ def train(cfg: TrainConfig) -> Path:
     pool = ctx.Pool(cfg.workers, initializer=worker_init)
     val = validation_specs()
     print(f"[marl] device={dev}; reference numbers on {len(val)} validation episodes ...", flush=True)
-    ref = pool.map(run_baseline, [("cbba_explorer", dict(share=True), s) for s in val])
-    ref_t = np.asarray([r["coverage_time"] if r["completed"] else s.max_time for r, s in zip(ref, val)])
+    ref_path = out / "val_reference.json"
+    key = [asdict(s) for s in val]
+    ref_t = None
+    if ref_path.exists():
+        cached = json.loads(ref_path.read_text())
+        if cached.get("specs") == json.loads(json.dumps(key)):
+            ref_t = np.asarray(cached["t100"])
+    if ref_t is None:
+        ref = pool.map(run_baseline, [("cbba_explorer", dict(share=True), s) for s in val], chunksize=1)
+        ref_t = np.asarray([r["coverage_time"] if r["completed"] else s.max_time for r, s in zip(ref, val)])
+        ref_path.write_text(json.dumps(dict(specs=key, t100=ref_t.tolist())))
     print(f"[marl] cbba_explorer (shared) validation mean t100 = {ref_t.mean():.1f} s", flush=True)
     best = math.inf
     version = 0
@@ -397,26 +427,69 @@ def train(cfg: TrainConfig) -> Path:
     def evaluate(it):
         nonlocal best
         b = blob_bytes()
-        res = pool.map(rollout, [(b, -it - 1, s, False) for s in val])
+        res = pool.map(rollout, [(b, -it - 1, s, False) for s in val], chunksize=1)
         t = np.asarray([r["coverage_time"] if r["completed"] else s.max_time for r, s in zip(res, val)])
         ratio = float(np.mean(t / ref_t))
+        size = np.asarray([12 if s.map[-3:] not in ("_16", "_20", "_24") else int(s.map[-2:]) for s in val])
         rec = dict(iter=it, eval_mean_t100=float(t.mean()), eval_ratio_vs_cbba=ratio,
-                   eval_completed=float(np.mean([r["completed"] for r in res])))
+                   eval_completed=float(np.mean([r["completed"] for r in res])),
+                   **{f"eval_ratio_{z}m": round(float(np.mean((t / ref_t)[size == z])), 4) for z in sorted(set(size))},
+                   eval_t100=[round(float(x), 1) for x in t])
+        (out / "snapshots").mkdir(exist_ok=True)
+        save(out / "snapshots" / f"iter_{it}.pt", it, dict(eval=rec))
         if ratio < best:
             best = ratio
             save(out / "marl_explorer.pt", it, dict(eval=rec))
             rec["saved_best"] = True
         return rec
 
+    best_file = out / "marl_explorer.pt"
+    if cfg.resume and best_file.exists():           # keep the best ratio seen before the restart
+        best = torch.load(best_file, map_location="cpu", weights_only=False).get("eval", {}).get(
+            "eval_ratio_vs_cbba", math.inf)
+
+    # Asynchronous collection: keep every worker busy and let an iteration take the first ``episodes`` episodes that
+    # finish, instead of waiting for the slowest (a 20 m world with 16 drones can take 5x the median). An episode
+    # started under the previous policy is still valid data: its actions carry the probabilities they were drawn
+    # with, which is exactly what PPO's ratio uses; episodes more than ``max_lag`` versions old are dropped.
+    import queue as _queue
+    finished: "_queue.Queue" = _queue.Queue()
+    in_flight = [0]
+    max_lag, target_in_flight = 2, cfg.workers + cfg.workers // 2
+    blob_cur = [blob_bytes()]
+
+    def submit(ver):
+        in_flight[0] += 1
+        pool.apply_async(rollout, ((blob_cur[0], ver, sample_spec(rng), True),),
+                         callback=lambda res, ver=ver: finished.put((ver, res)),
+                         error_callback=lambda e, ver=ver: finished.put((ver, e)))
+
+    def collect(n, current):
+        eps, stale = [], 0
+        while len(eps) < n:
+            ver, res = finished.get()
+            in_flight[0] -= 1
+            if isinstance(res, BaseException):
+                raise res
+            if current - ver > max_lag:
+                stale += 1
+            else:
+                eps.append(res)
+            while in_flight[0] < target_in_flight:
+                submit(current)
+        return eps, stale
+
     with open(log_path, "a") as logf:
-        rec0 = evaluate(start_iter)
-        print(f"[marl] iter {start_iter} eval {rec0}", flush=True)
-        logf.write(json.dumps(rec0) + "\n")
+        if not cfg.resume:
+            rec0 = evaluate(start_iter)
+            print(f"[marl] iter {start_iter} eval {rec0}", flush=True)
+            logf.write(json.dumps(rec0) + "\n")
+        version = 1
+        for _ in range(target_in_flight):
+            submit(version)
         for it in range(start_iter + 1, start_iter + cfg.iters + 1):
             t0 = time.time()
-            version += 1
-            b = blob_bytes()
-            eps = pool.map(rollout, [(b, version, sample_spec(rng), True) for _ in range(cfg.episodes)])
+            eps, n_stale = collect(cfg.episodes, version)
             t_roll = time.time() - t0
             # ---- assemble the batch
             F, C, M, B, A, LP, ADV, RET, IMG, SC = [], [], [], [], [], [], [], [], [], []
@@ -476,8 +549,10 @@ def train(cfg: TrainConfig) -> Path:
                         stats["clipfrac"] += float(((ratio - 1).abs() > cfg.clip).float().mean())
                         stats["n"] += 1
             k = max(1, stats.pop("n"))
+            version += 1
+            blob_cur[0] = blob_bytes()                   # episodes started from now on use the updated policy
             done_t = [ep["coverage_time"] if ep["completed"] else ep["final_time"] for ep in eps]
-            rec = dict(iter=it, transitions=N, roll_s=round(t_roll, 1), total_s=round(time.time() - t0, 1),
+            rec = dict(iter=it, transitions=N, roll_s=round(t_roll, 1), stale_dropped=n_stale, total_s=round(time.time() - t0, 1),
                        completed=float(np.mean([ep["completed"] for ep in eps])), mean_t=float(np.mean(done_t)),
                        collisions=float(np.mean([ep["pair_events"] for ep in eps])), beta=float(actor.beta.detach()),
                        ent_coef=ent_coef, **{kk: round(vv / k, 4) for kk, vv in stats.items()})
@@ -491,6 +566,6 @@ def train(cfg: TrainConfig) -> Path:
         print(f"[marl] final eval {rec}", flush=True)
         logf.write(json.dumps(rec) + "\n")
         save(out / "marl_explorer_last.pt", start_iter + cfg.iters)
-    pool.close()
+    pool.terminate()                                  # episodes still in flight are not needed
     pool.join()
     return out / "marl_explorer.pt"

@@ -8,11 +8,10 @@ from models import cbba  # noqa: F401  (CBBA task allocation)
 from models import greedy_explorer  # noqa: F401  (unknown-map greedy baseline)
 from models import geodesic_partition  # noqa: F401  (decentralised geodesic Voronoi)
 
-try:  # optional: the learned goal layer needs PyTorch (pip install -e ".[marl]")
-    import torch  # noqa: F401
-    from models import marl_explorer  # noqa: F401  (MAPPO goal layer)
-except ImportError:  # pragma: no cover
-    pass
+import importlib.util as _iu  # noqa: E402
+
+if _iu.find_spec("torch") is not None:  # optional: the learned goal layer needs PyTorch (pip install -e ".[marl]");
+    from models import marl_explorer  # noqa: F401  (MAPPO goal layer)  PyTorch itself loads only when it is used
 
 try:  # optional: D-MPC needs the OSQP solver (pip install osqp)
     from mascov.planning.dmpc import dmpc_available

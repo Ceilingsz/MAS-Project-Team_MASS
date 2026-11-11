@@ -22,7 +22,8 @@ for p in ("src", "."):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-GOALS = {"Greedy": "greedy_explorer", "Geodesic": "geodesic_partition", "CBBA": "cbba_explorer"}
+GOALS = {"Greedy": "greedy_explorer", "Geodesic": "geodesic_partition", "CBBA": "cbba_explorer",
+         "MAPPO": "marl_explorer"}   # MAPPO: the learned goal layer (needs torch), run it with --only MAPPO
 FLYING = {"Navigator": "", "D-MPC": "+dmpc"}
 MAPS = ["sparse", "rooms_and_door", "cluttered"]
 FIELDS = ["goal", "flying", "model", "map", "n_agents", "seed", "completed", "t95", "t100", "pair_events",
@@ -105,12 +106,15 @@ def main() -> None:
     ap.add_argument("--n", type=int, nargs="+", default=[4, 6])
     ap.add_argument("--max-time", type=float, default=900.0)
     ap.add_argument("--analyse", default=None)
+    ap.add_argument("--maps", nargs="+", default=None, help="maps (default: sparse, rooms_and_door, cluttered)")
+    ap.add_argument("--only", nargs="+", default=["Greedy", "Geodesic", "CBBA"], help="goal rules to run")
     a = ap.parse_args()
+    MAPS[:] = a.maps or MAPS
     if a.analyse:
         analyse(Path(a.analyse))
         return
     jobs = [dict(goal=g, flying=fl, model=GOALS[g] + FLYING[fl], map=mp, n_agents=n, seed=s, max_time=a.max_time)
-            for s in range(a.seeds) for mp in MAPS for n in a.n for g in GOALS for fl in FLYING]
+            for s in range(a.seeds) for mp in MAPS for n in a.n for g in GOALS if g in a.only for fl in FLYING]
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     key = lambda r: (r["model"], r["map"], str(r["n_agents"]), str(r["seed"]))   # noqa: E731

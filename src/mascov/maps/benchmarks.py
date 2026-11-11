@@ -1,6 +1,7 @@
 """Seeded benchmark maps. Every factory returns a ready-to-use World.
 
-Names: empty, sparse, corridor, rooms_and_door, cluttered.
+Names: empty, sparse, corridor, rooms_and_door, cluttered, labyrinth, plus the procedural families of
+maps/procedural.py (dense, random_rooms, maze, warehouse at 12-24 m; sparse / cluttered at 16-24 m).
 All maps keep the free space connected and the start corner clear.
 """
 from __future__ import annotations
@@ -140,6 +141,10 @@ def labyrinth(n_agents=2, size=12.0, seed=0, cfg: WorldConfig | None = None, sta
 BENCHMARKS = dict(empty=empty, sparse=sparse, corridor=corridor,
                   rooms_and_door=rooms_and_door, cluttered=cluttered,
                   labyrinth=labyrinth)
+
+from mascov.maps.procedural import register_into  # noqa: E402  (bigger, denser, structured maps: maze_24, ...)
+
+register_into(BENCHMARKS)
 
 
 def make_world(name: str, n_agents: int = 2, size: float = 12.0, seed: int = 0,

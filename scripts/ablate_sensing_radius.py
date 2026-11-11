@@ -36,6 +36,7 @@ MODELS = {                                   # the Q1-Q3 set in definitions.py (
     "Geodesic": ("geodesic_partition", dict(share=True)),
     "CBBA": ("cbba_explorer", dict(share=True)),
     "D-MPC": ("frontier+dmpc", dict(share=True)),
+    "MAPPO": ("marl_explorer", dict(share=True)),           # run with --only MAPPO
 }
 RADII = [0.5, 0.75, 1.0, 1.5, 2.0]
 MAPS = ["sparse", "rooms_and_door", "cluttered"]
@@ -82,13 +83,16 @@ def main() -> None:
     ap.add_argument("--max-time", type=float, default=1200.0)
     ap.add_argument("--radii", type=float, nargs="+", default=RADII)
     ap.add_argument("--quick", action="store_true", help="1 map, 2 seeds, 2 radii")
+    ap.add_argument("--maps", nargs="+", default=None, help="maps (default: sparse, rooms_and_door, cluttered)")
+    ap.add_argument("--only", nargs="+", default=None, help="run only these labels")
     a = ap.parse_args()
+    MAPS[:] = a.maps or MAPS
 
     maps, radii, seeds = (["rooms_and_door"], [0.5, 1.5], [0, 1]) if a.quick else (MAPS, a.radii, list(range(a.seeds)))
     # seed-major order: a sweep stopped part-way still has every algorithm, map and radius
     jobs = [dict(label=lab, model=m, kwargs=kw, map=mp, n_agents=a.n, seed=s, r_sense=rs, prior=prior,
                  max_time=a.max_time)
-            for s in seeds for mp in maps for rs in radii for lab, (m, kw) in MODELS.items()
+            for s in seeds for mp in maps for rs in radii for lab, (m, kw) in MODELS.items() if (lab in a.only if a.only else lab != "MAPPO")
             for prior in ("known", "unknown")]
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)

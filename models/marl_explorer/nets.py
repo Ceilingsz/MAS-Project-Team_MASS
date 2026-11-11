@@ -10,8 +10,8 @@ with head initialised to zero and beta = 3, so the untrained policy picks the gr
 to it. The same weights run for any team size (parameter sharing; candidates are a set).
 
 Critic (training only): a CNN over the TRUE state, which only the training harness can see (centralised training,
-decentralised execution). Channels on the 24 x 24 lattice: covered coverable cells, uncovered coverable cells,
-obstacle cells, all drones, this drone; plus scalars.
+decentralised execution). Channels on the lattice, padded to 48 x 48 (a 24 m world): covered coverable cells,
+uncovered coverable cells, obstacle cells, all drones, this drone, inside the workspace; plus scalars.
 """
 from __future__ import annotations
 
@@ -20,8 +20,8 @@ from torch import nn
 
 from models.marl_explorer.features import N_CTX, N_FEAT
 
-N_CRITIC_CH = 5
-N_CRITIC_SCALARS = 5
+N_CRITIC_CH = 6
+N_CRITIC_SCALARS = 6
 
 
 class Actor(nn.Module):
@@ -45,11 +45,12 @@ class Actor(nn.Module):
 
 
 class Critic(nn.Module):
-    def __init__(self, ch: int = N_CRITIC_CH, n_scalar: int = N_CRITIC_SCALARS, grid: int = 24):
+    def __init__(self, ch: int = N_CRITIC_CH, n_scalar: int = N_CRITIC_SCALARS):
         super().__init__()
         self.conv = nn.Sequential(
             nn.Conv2d(ch, 32, 3, padding=1), nn.ReLU(),
             nn.Conv2d(32, 64, 3, stride=2, padding=1), nn.ReLU(),
+            nn.Conv2d(64, 64, 3, stride=2, padding=1), nn.ReLU(),
             nn.Conv2d(64, 64, 3, stride=2, padding=1), nn.ReLU(),
             nn.AdaptiveAvgPool2d(4), nn.Flatten())
         self.mlp = nn.Sequential(nn.Linear(64 * 16 + n_scalar, 256), nn.ReLU(), nn.Linear(256, 128), nn.ReLU(),

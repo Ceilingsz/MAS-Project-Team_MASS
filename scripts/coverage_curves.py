@@ -22,6 +22,8 @@ ALGOS = {   # task allocation {Greedy, Geodesic, CBBA} x navigation {Navigator, 
     "Greedy + D-MPC": ("greedy_explorer+dmpc", dict(share=True)),
     "Geodesic + D-MPC": ("geodesic_partition+dmpc", dict(share=True)),
     "CBBA + D-MPC": ("cbba_explorer+dmpc", dict(share=True)),
+    "MAPPO + Navigator": ("marl_explorer", dict(share=True)),     # run with --only
+    "MAPPO + D-MPC": ("marl_explorer+dmpc", dict(share=True)),
 }
 MAPS = ["sparse", "rooms_and_door", "cluttered"]
 
@@ -46,9 +48,13 @@ def main():
     ap.add_argument("--jobs", type=int, default=os.cpu_count())
     ap.add_argument("--seeds", type=int, default=3)
     ap.add_argument("--n", type=int, default=4)
+    ap.add_argument("--maps", nargs="+", default=None, help="maps (default: sparse, rooms_and_door, cluttered)")
+    ap.add_argument("--only", nargs="+", default=None, help="run only these labels")
     a = ap.parse_args()
+    MAPS[:] = a.maps or MAPS
     jobs = [dict(label=lab, model=m, kwargs=kw, map=mp, n=a.n, seed=s)
-            for s in range(a.seeds) for mp in MAPS for lab, (m, kw) in ALGOS.items()]
+            for s in range(a.seeds) for mp in MAPS for lab, (m, kw) in ALGOS.items()
+            if (lab in a.only if a.only else not lab.startswith("MAPPO"))]
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     res = []

@@ -18,7 +18,7 @@ from mascov.planning.spots import choose_spot  # noqa: E402
 from mascov.sim.simulator import Simulator  # noqa: E402
 from mascov.world.belief import MapBelief  # noqa: E402
 from models.marl_explorer import train as T  # noqa: E402
-from models.marl_explorer.features import N_CTX, N_FEAT, candidate_features, statics_for  # noqa: E402
+from models.marl_explorer.features import N_CTX, N_FEAT, TOP_K, candidate_features, statics_for, top_k  # noqa: E402
 from models.marl_explorer.model import KIND, MARLExplorerPolicy  # noqa: E402
 from models.marl_explorer.nets import Actor, Critic  # noqa: E402
 
@@ -189,7 +189,8 @@ def test_critic_inputs_mark_this_drone_and_everyone():
     ep = _ep()
     ep["snap_pos"][1] = [[0.3, 0.3], [5.2, 7.9]]
     img, sc = T.critic_inputs(ep, np.array([1]), np.array([1]))
-    assert img.shape == (1, 5, 24, 24) and sc.shape == (1, 5)
+    assert img.shape == (1, 6, T.GRID, T.GRID) and sc.shape == (1, 6)
+    assert img[0, 5].sum() == 24 * 24 and img[0, 5, 24:, :].sum() == 0          # a 12 m world, padded
     assert img[0, 3].sum() == 2 and img[0, 4, 15, 10] == 1 and img[0, 4].sum() == 1
     assert img[0, 0].sum() == 5 and img[0, 1].sum() == 5
     with torch.no_grad():
@@ -203,6 +204,37 @@ def test_rollout_records_one_transition_per_goal_choice():
     spec = T.EpisodeSpec("rooms_and_door", 0, 2, max_time=200)
     ep = T.rollout((buf.getvalue(), 12345, spec, True))
     K = len(ep["agent"])
-    assert K > 0 and ep["feats"].shape == (K, 144, N_FEAT) and ep["mask"][np.arange(K), ep["action"]].all()
+    assert K > 0 and ep["feats"].shape == (K, TOP_K, N_FEAT) and ep["mask"][np.arange(K), ep["action"]].all()
     assert np.all(ep["logp"] <= 0) and np.all(np.diff(ep["snap"]) >= 0)
     assert ep["completed"] and ep["final_cov"].sum() == ep["n_cov"]
+
+
+def test_top_k_keeps_the_best_greedy_spots_and_maps_back():
+    rng = np.random.default_rng(0)
+    V = 300
+    feats = rng.random((V, N_FEAT)).astype(np.float32)
+    mask = rng.random(V) < 0.7
+    base = np.where(mask, -rng.random(V) * 6, 0).astype(np.float32)
+    f, m, b, idx = top_k(feats, mask, base, k=40)
+    assert f.shape == (40, N_FEAT) and m.all() and set(idx) <= set(np.flatnonzero(mask))
+    worst_kept = b.min()
+    assert (base[mask & ~np.isin(np.arange(V), idx)] <= worst_kept + 1e-6).all()
+    assert np.array_equal(f, feats[idx]) and np.array_equal(b, base[idx])
+    f, m, b, idx = top_k(feats, np.arange(V) < 5, base, k=40)                 # fewer than k: padded
+    assert m.sum() == 5 and (idx[5:] == -1).all() and (f[5:] == 0).all()
+
+
+@pytest.mark.parametrize("name", ["maze_24", "random_rooms_20"])
+def test_policy_runs_on_big_procedural_maps(name):
+    w = make_world(name, n_agents=10, seed=0)
+    r = Simulator(w, _model(), SimConfig(known_map=False, max_time=40)).run()
+    assert r.extra["marl_decisions"] >= 10 and r.obstacle_events == 0 and r.final_coverage > 0.1
+
+
+def test_mappo_goals_flown_by_dmpc_run():
+    """marl_explorer+dmpc: the goal policy's Navigator is a GoalRecorder (no plan), so the lazy map rebuild must cope."""
+    pytest.importorskip("osqp")
+    from mascov.common.model import get_model
+    w = make_world("random_rooms_12", n_agents=3, seed=0)
+    r = Simulator(w, get_model("marl_explorer+dmpc", share=True, seed=0), SimConfig(known_map=False, max_time=30)).run()
+    assert r.final_coverage > 0.2 and r.extra["goal_marl_decisions"] > 0

@@ -31,6 +31,7 @@ import numpy as np
 
 N_FEAT = 15
 N_CTX = 8
+TOP_K = 96               # the actor scores at most this many candidates: the best by greedy score
 LOOKAHEAD_R = 3.0
 MAX_GAIN = 25.0          # about the number of 0.5 m cells in a 1.4 m sensing disc
 
@@ -123,3 +124,21 @@ def candidate_features(*, space, statics: Statics, unknown: np.ndarray, pos: np.
                     comm, mask.mean(), gmax / MAX_GAIN], dtype=np.float32)
     f[~mask] = 0.0
     return f, ctx, mask, base, gain
+
+
+def top_k(feats, mask, base, k: int = TOP_K):
+    """Keep the k usable candidates with the highest greedy score; pad to exactly k rows (mask False).
+
+    Returns (feats (k, F), mask (k,), base (k,), idx (k,)) where idx maps a row back to its candidate (-1 = padding).
+    Bounds the actor's cost on big maps (576 candidates at 24 m) and gives every map the same input size."""
+    cand = np.flatnonzero(mask)
+    if len(cand) > k:
+        cand = cand[np.argsort(-base[cand], kind="stable")[:k]]
+        cand.sort()
+    out_f = np.zeros((k, feats.shape[1]), dtype=feats.dtype)
+    out_m = np.zeros(k, dtype=bool)
+    out_b = np.zeros(k, dtype=base.dtype)
+    idx = np.full(k, -1, dtype=np.int64)
+    m = len(cand)
+    out_f[:m], out_m[:m], out_b[:m], idx[:m] = feats[cand], True, base[cand], cand
+    return out_f, out_m, out_b, idx

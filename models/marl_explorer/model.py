@@ -27,13 +27,12 @@ import warnings
 from pathlib import Path
 
 import numpy as np
-import torch
+import shapely
 
 from mascov.common.model import AgentPolicy, DecentralisedModel, register
 from mascov.common.types import Command, Message
 from mascov.planning.navigator import Navigator
-from models.marl_explorer.features import candidate_features, statics_for
-from models.marl_explorer.nets import Actor
+from models.marl_explorer.features import candidate_features, statics_for, top_k
 
 KIND = "marl"
 DEFAULT_CHECKPOINT = Path(__file__).resolve().parent / "checkpoints" / "marl_explorer.pt"
@@ -43,6 +42,9 @@ _ACTORS: dict[str, Actor] = {}
 
 def load_actor(checkpoint: str | os.PathLike | None = None) -> Actor:
     """Load (and cache) the actor for inference on the CPU."""
+    import torch                                     # imported here: registering the model must not load PyTorch
+
+    from models.marl_explorer.nets import Actor
     path = Path(checkpoint) if checkpoint else DEFAULT_CHECKPOINT
     key = str(path)
     if key not in _ACTORS:
@@ -63,8 +65,10 @@ class MARLExplorerPolicy(AgentPolicy):
     map_interface = "unknown"
 
     def __init__(self, checkpoint=None, share: bool = True, delta: float = 1.0, seed: int = 0,
-                 claim_ttl: float = 3.0, stochastic: bool = False, actor: Actor | None = None, recorder=None):
+                 claim_ttl: float = 3.0, stochastic: bool = False, actor: Actor | None = None, recorder=None,
+                 lazy_map: bool = True):
         self.checkpoint, self.share, self.delta, self.seed = checkpoint, share, delta, seed
+        self.lazy_map = lazy_map
         self.claim_ttl, self.stochastic = claim_ttl, stochastic
         self._actor, self.recorder = actor, recorder
 
@@ -82,15 +86,35 @@ class MARLExplorerPolicy(AgentPolicy):
         self.done = False
         self.team: dict[int, tuple[float, np.ndarray]] = {}        # teammate -> (time, last known position)
         self.claims: dict[int, tuple[float, int | None]] = {}      # teammate -> (time heard, goal spot)
-        self.n_rebuilds = self.n_merged = self.n_decisions = self.n_dropped = 0
+        self.n_rebuilds = self.n_merged = self.n_decisions = self.n_dropped = self.n_deferred = 0
 
     # ------------------------------------------------------------------ helpers
-    def _sync_space(self, belief) -> None:
+    def _sync_space(self, belief, pos=None) -> None:
+        """Rebuild the planning space for the obstacles the drone now knows.
+
+        With ``lazy_map`` (the default) a rebuild between decisions happens only if a newly known obstacle (grown by
+        the clearance) touches the path being flown or its goal; otherwise the discoveries are batched until the
+        next goal choice, which always rebuilds. Rebuilding is most of the simulation cost on big, cluttered maps
+        (each one re-derives the visibility graph and every candidate's distances), and a far-away obstacle cannot
+        change the path being flown."""
         key = frozenset(belief.obstacles)
-        if key != self.known:
-            self.known, self.space = key, self.w.space_for(belief.obstacles)
-            self.nav.set_planner(self.space.planner)
-            self.n_rebuilds += 1
+        if key == self.known:
+            return
+        if pos is not None and self.lazy_map and not self._new_obstacles_matter(belief, key, pos):
+            self.n_deferred += 1
+            return
+        self.known, self.space = key, self.w.space_for(belief.obstacles)
+        self.nav.set_planner(self.space.planner)
+        self.n_rebuilds += 1
+
+    def _new_obstacles_matter(self, belief, key, pos) -> bool:
+        plan = getattr(self.nav, "plan", None)       # D-MPC flying (mix_dmpc) has no plan: always rebuild
+        if self.goal is None or plan is None:
+            return True
+        pts = np.vstack([np.asarray(pos, float)[None], plan.p])
+        route = shapely.LineString(pts) if len(pts) > 1 else shapely.Point(pts[0])
+        c = self.cfg.clearance
+        return any(route.distance(belief.obstacles[k]) <= c + 1e-6 for k in key - self.known)
 
     def _listen(self, obs) -> None:
         for m in obs.inbox:
@@ -110,6 +134,7 @@ class MARLExplorerPolicy(AgentPolicy):
         return pos, goals
 
     def _choose(self, obs) -> int | None:
+        self._sync_space(obs.belief)                     # goal choices always see every known obstacle
         usable = self.space.valid.copy()
         if self.visited:
             usable[list(self.visited)] = False
@@ -121,28 +146,29 @@ class MARLExplorerPolicy(AgentPolicy):
             n_agents=self.n_agents, t=obs.t, r_comm=self.cfg.r_comm, r_sense=self.cfg.r_sense, delta=self.delta)
         if not mask.any():
             return None
+        feats, mask, base, cand = top_k(feats, mask, base)
+        import torch
         with torch.no_grad():
             logits = self.actor(torch.from_numpy(feats)[None], torch.from_numpy(ctx)[None],
                                 torch.from_numpy(mask)[None], torch.from_numpy(base)[None])[0].double().numpy()
         z = logits[mask] - logits[mask].max()
         p = np.exp(z)
         p /= p.sum()
-        idx = np.flatnonzero(mask)
+        rows = np.flatnonzero(mask)
         if self.stochastic:
-            k = int(self.rng.choice(len(idx), p=p))
+            k = int(self.rng.choice(len(rows), p=p))
         else:
             k = int(np.argmax(p))
-        a = int(idx[k])
         self.n_decisions += 1
-        if self.recorder is not None:
-            self.recorder(self.id, obs.t, feats, ctx, mask, base, a, float(np.log(max(p[k], 1e-300))))
-        return a
+        if self.recorder is not None:      # the action is recorded as a row of the top-k set
+            self.recorder(self.id, obs.t, feats, ctx, mask, base, int(rows[k]), float(np.log(max(p[k], 1e-300))))
+        return int(cand[rows[k]])
 
     # ------------------------------------------------------------------ AgentPolicy
     def step(self, obs) -> Command:
         belief = obs.belief
         self._listen(obs)
-        self._sync_space(belief)
+        self._sync_space(belief, obs.pos)
         plan = self.nav.update(obs.t, obs.pos, obs.vel, obs.plan_finished)
         if self.goal is not None:
             if self.nav.arrived or self.nav.mode == "blocked":
@@ -164,12 +190,12 @@ class MARLExplorerPolicy(AgentPolicy):
         return Command(plan=plan, messages=msgs, done=self.done)
 
     def stats(self) -> dict:
-        return dict(self.nav.stats, map_rebuilds=self.n_rebuilds, cells_merged=self.n_merged,
+        return dict(self.nav.stats, map_rebuilds=self.n_rebuilds, map_rebuilds_deferred=self.n_deferred, cells_merged=self.n_merged,
                     marl_decisions=self.n_decisions, goals_dropped=self.n_dropped)
 
 
 @register("marl_explorer")
 def MARLExplorer(checkpoint=None, share: bool = True, delta: float = 1.0, seed: int = 0, claim_ttl: float = 3.0,
-                 stochastic: bool = False):
+                 stochastic: bool = False, lazy_map: bool = True):
     return DecentralisedModel(MARLExplorerPolicy, name="marl_explorer", checkpoint=checkpoint, share=share,
-                              delta=delta, seed=seed, claim_ttl=claim_ttl, stochastic=stochastic)
+                              delta=delta, seed=seed, claim_ttl=claim_ttl, stochastic=stochastic, lazy_map=lazy_map)
