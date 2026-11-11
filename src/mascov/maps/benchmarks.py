@@ -95,8 +95,51 @@ def cluttered(n_agents=2, size=12.0, seed=0, cfg: WorldConfig | None = None, sta
                        start_spacing=start_spacing, start_per_row=start_per_row)
 
 
+def labyrinth(n_agents=2, size=12.0, seed=0, cfg: WorldConfig | None = None, start_spacing=0.8, start_per_row=3) -> World:
+    """Narrow corridors with dead-end branches — worst case for optimistic planning.
+
+    Layout (12×12):
+        Horizontal walls create 4 corridors (each 2.6 m tall) joined by doors at alternating ends (an S-shaped route).
+        Vertical stubs inside the corridors narrow them to 1.4 m and form dead-end pockets that an unknown-map
+        explorer flies into before discovering the stub.
+    """
+    c = _cfg(size, cfg)
+    s, t = size, 0.4  # t = wall thickness
+
+    walls = []
+    # Three horizontal walls splitting into 4 corridors
+    for i in range(1, 4):
+        y = i * s / 4
+        # Each wall has a gap (door) at alternating sides to force S-shaped paths
+        if i % 2 == 1:
+            walls.append(rect(0, y - t / 2, 0.78 * s, y + t / 2))        # gap on right
+        else:
+            walls.append(rect(0.22 * s, y - t / 2, s, y + t / 2))        # gap on left
+
+    # Vertical stubs inside the corridors. Each hangs from one wall of its corridor and leaves a 1.4 m passage, so
+    # every corridor stays connected (a drone needs 2 x clearance = 0.9 m with the default eps_track); stubs beyond a
+    # corridor's door make dead-end pockets that an unknown-map explorer flies into before it sees the stub.
+    def corridor(k):
+        return (0.0 if k == 0 else k * s / 4 + t / 2), (s if k == 3 else (k + 1) * s / 4 - t / 2)
+
+    def stub(x, k, from_top):
+        lo, hi = corridor(k)
+        length = (hi - lo) - 1.4
+        walls.append(rect(x, hi - length, x + t, hi) if from_top else rect(x, lo, x + t, lo + length))
+
+    stub(0.6 * s, 0, from_top=False)     # corridor 1 (bottom)
+    stub(0.35 * s, 1, from_top=True)     # corridor 2
+    stub(0.7 * s, 2, from_top=False)     # corridor 3
+    stub(0.3 * s, 3, from_top=True)      # corridor 4 (top): two stubs
+    stub(0.65 * s, 3, from_top=False)
+
+    return World(c, walls, base_starts(n_agents, c, spacing=start_spacing, per_row=start_per_row),
+                 name=f"labyrinth_{int(size)}")
+
+
 BENCHMARKS = dict(empty=empty, sparse=sparse, corridor=corridor,
-                  rooms_and_door=rooms_and_door, cluttered=cluttered)
+                  rooms_and_door=rooms_and_door, cluttered=cluttered,
+                  labyrinth=labyrinth)
 
 
 def make_world(name: str, n_agents: int = 2, size: float = 12.0, seed: int = 0,

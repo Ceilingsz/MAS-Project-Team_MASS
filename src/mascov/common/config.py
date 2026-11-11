@@ -15,7 +15,7 @@ class WorldConfig:
     target_spacing: float = 0.5      # h: spacing of the target lattice
     viewpoint_spacing: float = 1.0   # spacing of the candidate-viewpoint lattice
 
-    # Time (shared with the C-ADMM paper's setting).
+    # Time.
     dt: float = 0.1                  # simulation / control step [s]
     horizon: int = 10                # MPC horizon in steps (control layer)
 
