@@ -34,7 +34,7 @@ N_DRONES = int(sys.argv[2]) if len(sys.argv) > 2 else 4
 MAP_SEED = int(sys.argv[3]) if len(sys.argv) > 3 else 0
 MAX_TIME = 300.0
 VIDEO_FPS = 30
-FRAME_STRIDE = 2
+FRAME_STRIDE = int(sys.argv[6]) if len(sys.argv) > 6 else 2
 
 # Algorithms to compare (label, model name, kwargs)
 ALGORITHMS = [
@@ -43,6 +43,10 @@ ALGORITHMS = [
     ("Geodesic",       "geodesic_partition", dict(share=True)),
     ("CBBA",           "cbba_explorer",      dict(share=True)),
 ]
+
+# The learned goal layer (MAPPO, models/marl_explorer), if PyTorch is installed
+if "marl_explorer" in registered_models():
+    ALGORITHMS.append(("MAPPO", "marl_explorer", dict(share=True)))
 
 # Add D-MPC flying if available: geodesic goals flown by D-MPC (models/mix_dmpc), the fastest collision-free combination
 if "geodesic_partition+dmpc" in registered_models():
@@ -54,7 +58,8 @@ assert len({a[1] for a in ALGORITHMS if a[1].startswith(("cbba", "cbaa"))}) == 1
 
 DRONE_COLORS = ["#3B82F6", "#F59E0B", "#A855F7", "#E24B4A", "#14B8A6", "#EC4899"]
 
-OUTPUT_FILE = ROOT / f"{MAP_NAME}_comparison.mp4"
+OUTPUT_FILE = Path(sys.argv[4]) if len(sys.argv) > 4 else ROOT / f"{MAP_NAME}_comparison.mp4"   # .webm: VP8 for browsers
+DPI = int(sys.argv[5]) if len(sys.argv) > 5 else 120
 
 
 # ---- scatter drones across the map ----
@@ -153,7 +158,7 @@ for label, model_name, kwargs in ALGORITHMS:
 
 # ---- prepare video ----
 n_algo = len(results)
-fig, axes = plt.subplots(1, n_algo, figsize=(5 * n_algo, 5.5), dpi=120)
+fig, axes = plt.subplots(1, n_algo, figsize=(5 * n_algo, 5.5), dpi=DPI)
 if n_algo == 1:
     axes = [axes]
 fig.patch.set_facecolor("white")
@@ -232,7 +237,8 @@ fig.tight_layout()
 fig.canvas.draw()
 rgba = np.asarray(fig.canvas.buffer_rgba())
 h, w = rgba.shape[:2]
-writer = cv2.VideoWriter(str(OUTPUT_FILE), cv2.VideoWriter_fourcc(*"mp4v"), VIDEO_FPS, (w, h))
+FOURCC = "VP80" if OUTPUT_FILE.suffix == ".webm" else "mp4v"
+writer = cv2.VideoWriter(str(OUTPUT_FILE), cv2.VideoWriter_fourcc(*FOURCC), VIDEO_FPS, (w, h))
 
 print(f"Rendering {len(frame_indices)} frames...")
 
