@@ -12,6 +12,7 @@ dependencies = ["numpy>=1.24", "shapely>=2.0", "matplotlib>=3.7", "scipy>=1.9"]
 [project.optional-dependencies]
 dev = ["pytest>=7"]
 dmpc = ["osqp>=1.0"]          # QP solver for the D-MPC trajectory layer (models/greedy_dmpc)
+marl = ["torch>=2.2"]         # the MAPPO goal layer (models/marl_explorer); a CUDA build speeds up training only
 
 [tool.setuptools.packages.find]
 where = ["src"]

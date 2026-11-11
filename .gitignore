@@ -9,3 +9,7 @@ results/
 *.log
 .DS_Store
 
+
+# MARL training by-products (the best checkpoint, models/marl_explorer/checkpoints/marl_explorer.pt, is tracked)
+models/marl_explorer/checkpoints/*_last.pt
+models/marl_explorer/checkpoints/train_log.jsonl

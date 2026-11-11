@@ -48,6 +48,11 @@ MODELS: dict[str, ModelInfo] = {m.name: m for m in [
     ModelInfo("cbaa_explorer", interface="unknown"),
     ModelInfo("frontier_greedy", interface="unknown"),
     ModelInfo("frontier_greedy_shared", interface="unknown"),
+    ModelInfo("marl_explorer", interface="unknown"),
+    ModelInfo("greedy_explorer+dmpc", interface="unknown"),
+    ModelInfo("geodesic_partition+dmpc", interface="unknown"),
+    ModelInfo("cbba_explorer+dmpc", interface="unknown"),
+    ModelInfo("marl_explorer+dmpc", interface="unknown"),
 ]}
 
 REFERENCE = "greedy_centralised"      # the efficiency yardstick

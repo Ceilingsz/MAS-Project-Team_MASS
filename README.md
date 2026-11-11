@@ -6,13 +6,15 @@ with polygonal obstacles using several single-integrator drones.
 ## Setup
 
 ```bash
-pip install -e ".[dev,dmpc]"     # numpy, shapely>=2, matplotlib, scipy, pytest, osqp (D-MPC)
+pip install -e ".[dev,dmpc,marl]"   # numpy, shapely>=2, matplotlib, scipy, pytest, osqp (D-MPC), torch (MAPPO)
 python -m pytest -q              # run from the repository root (about 4 min; see "Testing")
 PYTHONPATH=src:. python scripts/demo_greedy.py sparse 0
 ```
 
 Run everything from the repository root so that `models/` is importable.
 Optional, for D-MPC: `pip install -e ".[dmpc]"` (OSQP). Without it `greedy+dmpc` is not registered and its tests skip.
+Optional, for the learned goal layer: `pip install -e ".[marl]"` (PyTorch). Inference runs on the CPU; to train on an NVIDIA
+GPU install a CUDA build, e.g. `pip install torch --index-url https://download.pytorch.org/whl/cu128`.
 
 ## Testing
 
@@ -102,6 +104,114 @@ What it says:
 * **Without sharing, drones notice late** that the map is covered (21-96 s after the fact).
 * `low_comm` (1.5 m) changed nothing for models that never communicate, as expected; it is the lever for communicating models.
 
+## Learned goal layer: `marl_explorer` (MAPPO)
+
+`models/marl_explorer`: the goal layer of an unknown-map explorer, learned with multi-agent PPO. Flying is unchanged: the
+shared Navigator (`marl_explorer`), optionally with `SimConfig(safety="bvc")`, or D-MPC (`marl_explorer+dmpc`). Safety is
+deliberately **not** learned: the report card shows it is a flying-layer problem, which BVC and D-MPC already address.
+
+**Why the goal layer.** On an unknown map, coordination decides speed (sharing beliefs recovers about 31%; CBBA's
+conflict-free claims recover most of the rest) and the flying layer decides safety. A goal policy has a small, discrete,
+maskable action (one of the 144 candidate standing positions), so it learns in hours on one laptop, and any gain shows
+up directly in coverage time.
+
+**Formulation.** A Dec-POMDP with macro-actions. Agents: the drones, homogeneous, one shared actor (parameter sharing,
+any team size). A macro-action is "fly to spot j"; it ends when the drone arrives, is blocked, or the spot stops
+revealing anything, so drones decide asynchronously. Team reward over each drone's macro-action:
+`10 x (true coverage gained) - 0.02 x (seconds elapsed)`, ending at full coverage. Discount 0.995 per second, GAE
+(lambda 0.95) along each drone's own decision sequence. Centralised training, decentralised execution: the critic sees
+the TRUE state (a CNN over the 24 x 24 lattice: covered / uncovered / obstacle cells, every drone, this drone); the actor
+sees only what its drone knows.
+
+**Actor** (`nets.py`, `features.py`). Per candidate spot it sees the explorers' quantities: UNKNOWN cells revealed (line
+of sight past known obstacles), travel time through known free space, and their ratio. It also sees what greedy
+ignores:
+* distance to the nearest teammate goal, and how much of the spot's view that goal already covers;
+* distance to the nearest teammate, and whether that teammate is closer;
+* unknown mass within 3 m;
+* detour ratio.
+
+These go through a 2-layer transformer over the usable candidates, which outputs one logit each; the logit is added to
+`3 x log(greedy score / best greedy score)`. The residual head starts at zero, so the untrained actor's argmax is
+exactly the greedy spot (tested): training starts from a working explorer, not from random flying.
+
+**Messages.** Every decision, a drone broadcasts its position, its current goal and (with `share=True`, the default) its
+map belief to drones within `r_comm`. It keeps teammates' positions and goals for `claim_ttl` (3 s). Done uses the
+explorers' rule (no reachable, unvisited spot reveals anything), so `knows_when_done` behaves as for the other sharing
+explorers.
+
+**Training in the real simulator** (`train.py`, `scripts/train_marl.py`). One episode takes about 2 s, so 13 CPU worker
+processes roll out in the actual `Simulator` and the PPO update runs on the GPU. Training uses the same sensing,
+Navigator, messages and dynamics as evaluation, so there is no surrogate and no sim-to-sim gap.
+
+Each training episode is drawn at random:
+* map: `sparse` or `cluttered` (seeds >= 1000), `rooms_and_door`, `corridor`, `empty` or `labyrinth`;
+* 2-8 drones;
+* `r_comm` 1.5, 3 or 6 m, or unlimited;
+* `eps_track` 0.3 or 0.45, start spacing 0.8 or 2 m;
+* the map revealed in 15% of episodes.
+
+Seeds 0-999 of the random maps are never used for training. Every 10 iterations the deterministic actor is evaluated on
+a fixed validation set of 20 episodes: seeds 0-2 of `sparse` and `cluttered`, the fixed maps, 3, 6 or 8 drones, two of
+them with `r_comm` = 3 m. The checkpoint with the best mean ratio to `cbba_explorer(share=True)` is kept.
+
+```bash
+python scripts/train_marl.py --iters 300 --episodes 64 --workers 13     # about 2.5 h on a laptop (RTX 4060, 16 threads)
+python scripts/train_marl.py --iters 2 --episodes 8 --workers 8 --out results/marl_smoke   # smoke run
+python scripts/run_experiments.py MARL_TEAM MARL_COMM MARL_PRIOR MARL_SAFE --jobs 12
+```
+
+**Status (interim).** Training is in progress and the committed checkpoint is an intermediate one. On the 20 held-out
+validation episodes, mean coverage time relative to `cbba_explorer` with shared beliefs (73.7 s there):
+
+| actor | ratio to CBBA |
+|---|---|
+| untrained (= greedy goals) | 1.54 x |
+| iteration 10 | 1.32 x |
+| iteration 20 | 0.93 x |
+| iteration 30 | **0.85 x** |
+
+Every validation episode completed. The full comparison (`MARL_TEAM`, `MARL_COMM`, `MARL_PRIOR`, `MARL_SAFE`) and the
+report-card row will be filled in from the final checkpoint.
+
+**Plans considered.** The MARL options weighed for this problem:
+
+| option | outcome |
+|---|---|
+| MAPPO with macro-actions and action masking | **chosen**: cooperative, homogeneous agents; discrete, maskable goals; stable on-policy learning; fast enough once episodes run in parallel |
+| QMIX / VDN with macro-actions | the off-policy alternative, if rollouts were scarcer |
+| IPPO | the ablation that tests the centralised critic |
+| GNN or learned-communication policies (TarMAC, IC3Net) | the explicit goal and position messages already carry intent |
+| a learned CBBA bid function | keeps consensus, but has a smaller ceiling |
+| continuous-velocity MARL with a shield | would replace a flying layer that BVC and D-MPC already make safe |
+
+References:
+* Yu et al., MAPPO, NeurIPS 2022.
+* Amato et al., macro-action Dec-POMDPs, JAIR 2019.
+* Xiao et al., macro-action MARL, CoRL 2019.
+* Yu et al., multi-agent exploration: MAANS, ECCV 2022; ACE, AAMAS 2023.
+* Rashid et al., QMIX, ICML 2018.
+
+## Merged from `v3/mascurrent`
+
+`v3/mascurrent` was a teammate's newer copy of this repository (its `most recent mas` folder held only caches). Its new
+code is now here:
+* `models/mix_dmpc`: any navigator-based unknown-map goal layer flown by D-MPC (`greedy_explorer+dmpc`,
+  `geodesic_partition+dmpc`, `cbba_explorer+dmpc`; `marl_explorer+dmpc` was added here), with
+  `tests/test_mix_dmpc.py`.
+* `greedy_explorer(coordinate=True)`: broadcast the current goal and skip spots teammates claimed in the last
+  `claim_ttl` s (cheap deconfliction, no consensus).
+* The `labyrinth` map: four corridors joined by doors at alternating ends, with dead-end stubs. **Fixed on merge:** its
+  stubs spanned whole corridors, so only 86 of 554 targets were reachable; they now leave a 1.4 m passage (548 of 564
+  reachable).
+* Experiments `Q1_MAP`, `Q2_COORD`, `Q3_SAFETY` and `Q1B_LABYRINTH`, and the scripts `ablate_sensing_radius`,
+  `analyse_sensing_ablation`, `collisions_vs_team_size`, `comm_radius_sweep`, `compare_algorithms_video`,
+  `coverage_curves`, `mix_match_goal_x_flying` and `render_labyrinth`.
+* Kept from the root: the newer `experiments/plots.py` (error bands). The comparison videos (83 MB) were not committed.
+
+**C-ADMM is out of scope.** Its placeholder model names and the ADMM-iteration experiment (E7b) were removed from
+`definitions.py`; E2, E6, E7 and E8 no longer list it.
+
 ## The world model (what is simulated)
 
 * **Space:** continuous rectangle `[0,W] x [0,H]`, metres. **Obstacles:** static *convex* polygons
@@ -137,7 +247,10 @@ models/        one folder per algorithm: greedy_single (B0), greedy_centralised 
                frontier_greedy, frontier_greedy_shared (unknown-map explorers),
                cbba (CBBA task allocation, known map), cbba_explorer / cbaa_explorer (CBBA / CBAA, unknown map),
                greedy_explorer, geodesic_partition (unknown-map explorers: greedy, geodesic Voronoi split),
-               greedy_dmpc (greedy+dmpc, frontier+dmpc: D-MPC trajectories)
+               greedy_dmpc (greedy+dmpc, frontier+dmpc: D-MPC trajectories),
+               mix_dmpc (any unknown-map goal layer flown by D-MPC: greedy_explorer+dmpc, geodesic_partition+dmpc,
+               cbba_explorer+dmpc, marl_explorer+dmpc),
+               marl_explorer (goal layer learned with MAPPO; checkpoints/ holds the trained weights)
                `import models` registers them all (the D-MPC models only if OSQP is installed)
 tests/  scripts/  configs/  experiments/  docs/
 ```
@@ -228,7 +341,7 @@ random (this removed deadlocks that left runs stuck at 7-94% coverage). Priority
 Measured over the 110 runs: all complete; B0 and B2 never collided; **B3 had collision episodes in 2 of 30 runs and B4 in 2 of 30**,
 all at N=4 (separations down to 0.035 m for one B3 run on `sparse`, otherwise 0.27-0.29 m against the 0.3 m limit).
 Earlier tuning had shown 0 collisions on a smaller set; a tiny change to a keep-away radius then exposed these, so
-treat "0 collisions" as *not established* for B3/B4. The guarantee belongs to the BVC / C-ADMM safety layer, which is why
+treat "0 collisions" as *not established* for B3/B4. The guarantee belongs to the BVC safety layer (or D-MPC), which is why
 that layer exists (the BVC filter below removed them in the tested runs). Tracking error under these reactive replans also exceeds `eps_track`: up to ~0.64 m with several drones
 (reversals after a yield), and ~0.37 m for B2 at N=1 (mid-route re-targeting), versus <= 0.3 m for smooth single-drone plans (B0,
 asserted in tests). Any planner that relies on a clearance margin must have its own epsilon measured.
@@ -250,8 +363,8 @@ It is a **drone-drone** filter only: no obstacles, and it assumes every drone ru
 * **Old measurements no longer apply.** The adversarial-scenario, baseline-run and `r_comm` numbers from the double-integrator model
   (minimum separation 0.34 m; 0 collisions in 90 runs at 0-1.2% time cost; held at `r_comm` 0.8 m and failed at 0.5 m) have **not been
   re-measured**. Re-run `python -m pytest tests/test_safety.py` and `python scripts/run_baselines.py --n 2 3 4 --safety bvc`.
-* **Not done:** this is the safety half of the proposal's Layer 2. The C-ADMM distributed-MPC trajectory generation itself is not
-  implemented, nor is obstacle handling in the control layer.
+* **Scope:** BVC is a drone-drone filter only (no obstacles); trajectory generation with obstacle constraints is D-MPC (below).
+  C-ADMM is not part of this project.
 
 ## Unknown-map explorers: `greedy_explorer`, `geodesic_partition`
 
@@ -489,7 +602,7 @@ What this does and does not show:
 ## Experiment framework (levers, measurables, runner, plots)
 
 The study plan's experiments are data in `src/mascov/experiments/definitions.py` (E0 baselines, E1 to E8, S1 BVC add-on).
-Algorithms that are not written yet (C-ADMM, CBBA + D-MPC, the integrated method) are listed there under agreed model
+Algorithms that are not written yet (the known-map `cbba+dmpc`, the integrated `coverage_mpc`) are listed there under agreed model
 names; the runner skips them until a model with that name is registered, so nothing here changes when they arrive.
 
 ```
@@ -516,6 +629,6 @@ continuous stretch with the target in view of one drone) and `frac_revisited`, p
 - `WorldConfig.yield_to_neighbors=False` turns off the baselines' heuristic yielding and sidestepping: the "no safety" baseline.
 - A model (or policy class) may set `decision_period` to be called more often than `SimConfig.decision_period`.
 - `mascov.comm.NegotiatingPolicy` / `NegotiatingModel` give a decentralised policy several synchronous message rounds per
-  decision (range-limited, counted in `RunResult.extra` as `neg_rounds`, `neg_transmissions`, `neg_deliveries`). CBBA and
-  C-ADMM are meant to be written on it. See the docstring in `src/mascov/comm/rounds.py`.
+  decision (range-limited, counted in `RunResult.extra` as `neg_rounds`, `neg_transmissions`, `neg_deliveries`). CBBA-style
+  consensus can be written on it. See the docstring in `src/mascov/comm/rounds.py`.
 - `SimConfig.milestones` sets which coverage fractions get a first-reached time.
